@@ -18,7 +18,7 @@ template <int dim>
 class LocalPolynomialsRT : public TensorPolynomialsBase<dim>
 {
 public:
-	LocalPolynomialsRT(const unsigned int k);
+  LocalPolynomialsRT(const unsigned int k);
 
   /**
    * Compute the value and the first and second derivatives of each Raviart-

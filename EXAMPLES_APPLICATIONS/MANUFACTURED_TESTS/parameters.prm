@@ -3,17 +3,17 @@
 
 subsection Time discretization parameters
   # Final time of simulation
-  set Final time = 1
+  set Final time = 1.0
   
   # Initial time step
-  #set Initial time step = 0.01
-  #set Initial time step = 0.005
-  set Initial time step = 0.0025
+  set Initial time step = 0.01
 
   # Second order time derivative
+  #set Second order time derivative = true
   set Second order time derivative = false
 
   # Second order extrapolation
+  #set Second order extrapolation = true
   set Second order extrapolation = false
 
   # Use implicit time derivative term in pl
@@ -39,13 +39,15 @@ subsection Spatial discretization parameters
   set Dimension = 2
 
   # If true, then stability method is used For pl
-  set Stab_pl = true
+  set Stab_pl = false
 
   # If true, then stability method is used For Sa
-  set Stab_a = true
+  #set Stab_a = true
+  set Stab_a = false
 
   # If true, then stability method is used For Sv
-  set Stab_v = true
+  #set Stab_v = true
+  set Stab_v = false
 
   # If true, then it considers all the densities as constant, and cancels it from all the three equations
   set Incompressible = false
@@ -54,10 +56,11 @@ subsection Spatial discretization parameters
   set Degree = 1
 
   # Initial level of refinement
-  set Initial level of refinement = 2
+  set Initial level of refinement = 1
 
   # Final level of refinement
-  set Final level of refinement = 5
+  #set Final level of refinement = 5
+  set Final level of refinement = 1
 
   # theta pl (0 = Incomplete IPDG, 1 = Nonsymmetric IPDG, -1 = Symmetric IPDG)
   set Theta pl = 1
@@ -126,7 +129,6 @@ subsection Spatial discretization parameters
   
   # Use exact Sv in the projection onto RT (only for manufactured test case)
   set Use exact Sv in RT = false
-  #set Use exact Sv in RT = true
   
   # Add explicit artificial viscosity
   set Add explicit artificial viscosity = false

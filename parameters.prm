@@ -3,11 +3,10 @@
 
 subsection Time discretization parameters
   # Final time of simulation
-  set Final time = 0.02
+  set Final time = 1.0
   
   # Initial time step
   set Initial time step = 0.01
-  #set Initial time step = 0.005
 
   # Second order time derivative
   #set Second order time derivative = true
@@ -39,6 +38,9 @@ subsection Spatial discretization parameters
   # Dimension (2 or 3)
   set Dimension = 2
 
+  # If true, then stability method is used For pl
+  set Stab_pl = false
+
   # If true, then stability method is used For Sa
   #set Stab_a = true
   set Stab_a = false
@@ -54,7 +56,6 @@ subsection Spatial discretization parameters
   set Degree = 1
 
   # Initial level of refinement
-  #set Initial level of refinement = 2
   set Initial level of refinement = 1
 
   # Final level of refinement
@@ -89,11 +90,10 @@ subsection Spatial discretization parameters
   set Penalty Sv boundary = 1.0
   
   # Project to RT0 (if false then projects to RTk)
-  set Project to RT0 = true
+  set Project to RT0 = false
 
   # If true then projects -\kappa \nabla P_h to RT0, otherwise it uses rholambda_t
-  #set Project to RT0 with kappa only = false
-  set Project to RT0 with kappa only = true
+  set Project to RT0 with kappa only = false
   
   # Project Darcy velocity with gravity. If true, projects -\kappa (\rho\lambda)_t (\nabla P_h + \rho_a g)
   # or -\kappa (\nabla P_h + \rho_a g) according to the previous parameter. Otherwise
@@ -111,7 +111,6 @@ subsection Spatial discretization parameters
   
   # Use exact pl in the projection onto RT (only for manufactured test case)
   set Use exact pl in RT = false
-  #set Use exact pl in RT = true
   
   # Use exact Sa in pl (only for manufactured test case)
   set Use exact Sa in pl = false
@@ -121,7 +120,6 @@ subsection Spatial discretization parameters
   
   # Use exact Sa in the projection onto RT (only for manufactured test case)
   set Use exact Sa in RT = false
-  #set Use exact Sa in RT = true
   
   # Use exact Sv in pl (only for manufactured test case)
   set Use exact Sv in pl = false
@@ -131,7 +129,6 @@ subsection Spatial discretization parameters
   
   # Use exact Sv in the projection onto RT (only for manufactured test case)
   set Use exact Sv in RT = false
-  #set Use exact Sv in RT = true
   
   # Add explicit artificial viscosity
   set Add explicit artificial viscosity = false

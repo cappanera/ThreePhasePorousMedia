@@ -1,5 +1,5 @@
 # Three Phase Flow Code
-A codebase using deal.ii that solves the three-phase flow problem in porous media. 
+A codebase using deal.ii to study multi-phase (and multi-component) flows problem in porous media. 
 Current version is compatible with deal.ii v9.6.2
 
 # Running The Code

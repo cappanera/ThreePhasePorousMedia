@@ -30,7 +30,7 @@ LocalPolynomialsRT<dim>::create_polynomials(const unsigned int k)
   if (k == 0)
     {
       // k = 0 is not defined, so this does not matter.
-	  // For future work: create an error for this case
+      // For future work: create an error for this case
       pols[0] = Polynomials::LagrangeEquidistant::generate_complete_basis(0);
       for (unsigned int d = 1; d < dim; ++d)
         pols[d] = Polynomials::Legendre::generate_complete_basis(1);
@@ -49,12 +49,12 @@ LocalPolynomialsRT<dim>::create_polynomials(const unsigned int k)
 template <int dim>
 void
 LocalPolynomialsRT<dim>::evaluate(
-  const Point<dim> &           unit_point,
-  std::vector<Tensor<1, dim>> &values,
-  std::vector<Tensor<2, dim>> &grads,
-  std::vector<Tensor<3, dim>> &grad_grads,
-  std::vector<Tensor<4, dim>> &third_derivatives,
-  std::vector<Tensor<5, dim>> &fourth_derivatives) const
+				  const Point<dim> &           unit_point,
+				  std::vector<Tensor<1, dim>> &values,
+				  std::vector<Tensor<2, dim>> &grads,
+				  std::vector<Tensor<3, dim>> &grad_grads,
+				  std::vector<Tensor<4, dim>> &third_derivatives,
+				  std::vector<Tensor<5, dim>> &fourth_derivatives) const
 {
   Assert(values.size() == this->n() || values.size() == 0,
          ExcDimensionMismatch(values.size(), this->n()));
@@ -65,7 +65,7 @@ LocalPolynomialsRT<dim>::evaluate(
   Assert(third_derivatives.size() == this->n() || third_derivatives.size() == 0,
          ExcDimensionMismatch(third_derivatives.size(), this->n()));
   Assert(fourth_derivatives.size() == this->n() ||
-           fourth_derivatives.size() == 0,
+	 fourth_derivatives.size() == 0,
          ExcDimensionMismatch(fourth_derivatives.size(), this->n()));
 
   // have a few scratch
@@ -139,8 +139,8 @@ LocalPolynomialsRT<dim>::evaluate(
           for (unsigned int d2 = 0; d2 < dim; ++d2)
             for (unsigned int d3 = 0; d3 < dim; ++d3)
               third_derivatives[i + d * n_sub][d][(d1 + d) % dim]
-                               [(d2 + d) % dim][(d3 + d) % dim] =
-                                 p_third_derivatives[i][d1][d2][d3];
+		[(d2 + d) % dim][(d3 + d) % dim] =
+		p_third_derivatives[i][d1][d2][d3];
 
       for (unsigned int i = 0; i < p_fourth_derivatives.size(); ++i)
         for (unsigned int d1 = 0; d1 < dim; ++d1)
@@ -148,9 +148,9 @@ LocalPolynomialsRT<dim>::evaluate(
             for (unsigned int d3 = 0; d3 < dim; ++d3)
               for (unsigned int d4 = 0; d4 < dim; ++d4)
                 fourth_derivatives[i + d * n_sub][d][(d1 + d) % dim]
-                                  [(d2 + d) % dim][(d3 + d) % dim]
-                                  [(d4 + d) % dim] =
-                                    p_fourth_derivatives[i][d1][d2][d3][d4];
+		  [(d2 + d) % dim][(d3 + d) % dim]
+		  [(d4 + d) % dim] =
+		  p_fourth_derivatives[i][d1][d2][d3][d4];
     }
 }
 

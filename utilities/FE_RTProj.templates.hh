@@ -19,16 +19,16 @@ using namespace dealii;
 
 template <class PolynomialType, int dim, int spacedim>
 FE_DGVector_UH<PolynomialType, dim, spacedim>::FE_DGVector_UH(const unsigned int deg,
-                                                        MappingKind        map)
+							      MappingKind        map)
   : FE_PolyTensor<dim, spacedim>(
-      PolynomialType(deg),
-      FiniteElementData<dim>(get_dpo_vector(deg),
-                             dim,
-                             deg + 1,
-                             FiniteElementData<dim>::L2),
-      std::vector<bool>(PolynomialType::n_polynomials(deg), true),
-      std::vector<ComponentMask>(PolynomialType::n_polynomials(deg),
-                                 ComponentMask(dim, true)))
+				 PolynomialType(deg),
+				 FiniteElementData<dim>(get_dpo_vector(deg),
+							dim,
+							deg + 1,
+							FiniteElementData<dim>::L2),
+				 std::vector<bool>(PolynomialType::n_polynomials(deg), true),
+				 std::vector<ComponentMask>(PolynomialType::n_polynomials(deg),
+							    ComponentMask(dim, true)))
 {
   this->mapping_kind                   = {map};
   const unsigned int polynomial_degree = this->tensor_degree();
@@ -64,7 +64,7 @@ FE_DGVector_UH<PolynomialType, dim, spacedim>::get_name() const
 template <class PolynomialType, int dim, int spacedim>
 std::vector<unsigned int>
 FE_DGVector_UH<PolynomialType, dim, spacedim>::get_dpo_vector(
-  const unsigned int deg)
+							      const unsigned int deg)
 {
   std::vector<unsigned int> dpo(dim + 1);
   dpo[dim] = PolynomialType::n_polynomials(deg);
@@ -76,8 +76,8 @@ FE_DGVector_UH<PolynomialType, dim, spacedim>::get_dpo_vector(
 template <class PolynomialType, int dim, int spacedim>
 bool
 FE_DGVector_UH<PolynomialType, dim, spacedim>::has_support_on_face(
-  const unsigned int,
-  const unsigned int) const
+								   const unsigned int,
+								   const unsigned int) const
 {
   return true;
 }

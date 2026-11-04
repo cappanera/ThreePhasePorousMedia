@@ -257,6 +257,9 @@ namespace CouplingPressureSaturation
     Vector<double> sv_assemble_time(final_time/time_step - timestep_number + 1);
     Vector<double> sv_solver_time(final_time/time_step - timestep_number + 1);
 
+	double total_pl_assemble_time, total_pl_solve_time, total_sa_assemble_time, total_sa_solve_time, total_sv_assemble_time, total_sv_solve_time;
+
+	total_pl_assemble_time = total_pl_solve_time = total_sa_assemble_time = total_sa_solve_time = total_sv_assemble_time = total_sv_solve_time = 0.0;
 
 
     Timer timer(mpi_communicator);
@@ -285,6 +288,10 @@ namespace CouplingPressureSaturation
     loop_timer.reset();
     loop_timer.start();
 
+	parallel::shared::Triangulation<dim> triangulation_MPI(MPI_COMM_WORLD);
+	// triangulation_MPI(MPI_COMM_WORLD);
+	triangulation_MPI.copy_triangulation(triangulation);
+
     LiquidPressure::LiquidPressureProblem<dim> pl_problem(triangulation, degree,
 							  theta_pl, penalty_pl, penalty_pl_bdry, dirichlet_id_pl, use_exact_Sa_in_pl,
 							  use_exact_Sv_in_pl,
@@ -304,7 +311,7 @@ namespace CouplingPressureSaturation
 
     Sa_problem.setup_system();
 
-    VaporSaturation::VaporSaturationProblem<dim> Sv_problem(triangulation, degree,
+    VaporSaturation::VaporSaturationProblem<dim> Sv_problem(triangulation_MPI, degree,
 							    theta_Sv, penalty_Sv, penalty_Sv_bdry, dirichlet_id_sv, use_exact_pl_in_Sv,
 							    use_exact_Sa_in_Sv,
 							    second_order_time_derivative, second_order_extrapolation,
@@ -350,6 +357,7 @@ namespace CouplingPressureSaturation
 	    pcout << "Elapsed CPU time for pl assemble: " << timer.cpu_time() << " seconds."<< std::endl;
 
 	    pl_assemble_time[index_time] = timer.cpu_time();
+		total_pl_assemble_time += timer.cpu_time();
 
 	    timer.reset();
 	    timer.start();
@@ -361,6 +369,7 @@ namespace CouplingPressureSaturation
 
 
 	    pl_solver_time[index_time] = timer.cpu_time();
+		total_pl_solve_time += timer.cpu_time();
 
 	    pl_solution = pl_problem.pl_solution;
 
@@ -454,6 +463,7 @@ namespace CouplingPressureSaturation
 	    pcout << "Elapsed CPU time for Sa assemble: " << timer.cpu_time() << " seconds." << std::endl;
 
 	    sa_assemble_time[index_time] = timer.cpu_time();
+		total_sa_assemble_time += timer.cpu_time();
 
 	    timer.reset();
 	    timer.start();
@@ -464,6 +474,7 @@ namespace CouplingPressureSaturation
 	    pcout << "Elapsed CPU time for Sa solve: " << timer.cpu_time() << " seconds." << std::endl;
 
 	    sa_solver_time[index_time] = timer.cpu_time();
+		total_sa_solve_time += timer.cpu_time();
 
 	    Sa_solution = Sa_problem.Sa_solution;
 
@@ -489,7 +500,7 @@ namespace CouplingPressureSaturation
 		pcout << "Elapsed CPU time for Sv assemble: " << timer.cpu_time() << " seconds." << std::endl;
 
 		sv_assemble_time[index_time] = timer.cpu_time();
-
+		total_sv_assemble_time += timer.cpu_time();
 
 		timer.reset();
 		timer.start();
@@ -497,6 +508,8 @@ namespace CouplingPressureSaturation
 		timer.stop();
 
 		solver_time[index_time] = timer.cpu_time();
+		total_sv_solve_time += timer.cpu_time();
+
 		pcout << "Elapsed CPU time for Sv solve: " << timer.cpu_time() << " seconds." << std::endl;
 
 		sv_solver_time[index_time] += timer.cpu_time();
@@ -611,6 +624,15 @@ namespace CouplingPressureSaturation
 
     time_file << "Average sv assemble time = " << sv_assemble_time.mean_value()<< " seconds." << std::endl;
     time_file << "Average sv solver time = " << sv_solver_time.mean_value() << " seconds." << std::endl << "\n";
+
+	time_file << "Total pl assemble time = " << total_pl_assemble_time << " seconds." << std::endl;
+	time_file << "Total pl solve time = " << total_pl_solve_time << " seconds." << std::endl << "\n";
+
+	time_file << "Total sa assemble time = " << total_sa_assemble_time << " seconds." << std::endl;
+	time_file << "Total sa solve time = " << total_sa_solve_time << " seconds." << std::endl << "\n";
+
+	time_file << "Total sv assemble time = " << total_sv_assemble_time << " seconds." << std::endl;
+	time_file << "Total sv solve time = " << total_sv_solve_time << " seconds." << std::endl << "\n";
 
     time_file << "Total Time: " << total_time << " seconds." << std::endl << "\n";
 

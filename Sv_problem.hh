@@ -152,6 +152,7 @@ namespace VaporSaturation
 
     PETScWrappers::MPI::SparseMatrix system_matrix_vapor_saturation;
     PETScWrappers::MPI::Vector right_hand_side_vapor_saturation;
+	PETScWrappers::PreconditionBoomerAMG preconditioner_vapor_saturation;
 
     PETScWrappers::MPI::Vector pl_solution;
     PETScWrappers::MPI::Vector pl_solution_n;
@@ -1534,9 +1535,11 @@ namespace VaporSaturation
 	SolverControl solver_control(pl_solution_.size(), 1.e-7 * right_hand_side_vapor_saturation.l2_norm());
 
 	PETScWrappers::SolverGMRES gmres(solver_control, mpi_communicator);
-	PETScWrappers::PreconditionBoomerAMG preconditioner(system_matrix_vapor_saturation);
+	// PETScWrappers::PreconditionBoomerAMG preconditioner(system_matrix_vapor_saturation);
+	if(rebuild_matrix)
+		preconditioner_vapor_saturation.initialize(system_matrix_vapor_saturation);
 
-	gmres.solve(system_matrix_vapor_saturation, Sv_solution, right_hand_side_vapor_saturation, preconditioner);
+	gmres.solve(system_matrix_vapor_saturation, Sv_solution, right_hand_side_vapor_saturation, preconditioner_vapor_saturation);
 
 	Vector<double> localized_solution(Sv_solution);
 	constraints.distribute(localized_solution);

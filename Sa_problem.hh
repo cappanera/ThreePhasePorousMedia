@@ -152,6 +152,7 @@ namespace AqueousSaturation
 
     PETScWrappers::MPI::SparseMatrix system_matrix_aqueous_saturation;
     PETScWrappers::MPI::Vector right_hand_side_aqueous_saturation;
+	PETScWrappers::PreconditionBoomerAMG preconditioner_aqueous_saturation;
 
     PETScWrappers::MPI::Vector pl_solution;
     PETScWrappers::MPI::Vector pl_solution_n;
@@ -1795,9 +1796,11 @@ namespace AqueousSaturation
 	SolverControl solver_control(pl_solution_.size(), 1.e-7 * right_hand_side_aqueous_saturation.l2_norm());
 
 	PETScWrappers::SolverGMRES gmres(solver_control, mpi_communicator);
-	PETScWrappers::PreconditionBoomerAMG preconditioner(system_matrix_aqueous_saturation);
+	// PETScWrappers::PreconditionBoomerAMG preconditioner(system_matrix_aqueous_saturation);
+	if(rebuild_matrix)
+		preconditioner_aqueous_saturation.initialize(system_matrix_aqueous_saturation);
 
-	gmres.solve(system_matrix_aqueous_saturation, Sa_solution, right_hand_side_aqueous_saturation, preconditioner);
+	gmres.solve(system_matrix_aqueous_saturation, Sa_solution, right_hand_side_aqueous_saturation, preconditioner_aqueous_saturation);
 
 	Vector<double> localized_solution(Sa_solution);
 	constraints.distribute(localized_solution);

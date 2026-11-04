@@ -628,7 +628,7 @@ namespace VaporSaturation
 		    }
 		}
 	      // Source term
-	      copy_data.cell_rhs(i) += right_hand_side_fcn.value(q_points[point])
+	      copy_data.cell_rhs(i) += rhs_values[point]
 		* fe_v.shape_value(i, point)
 		* JxW[point];
 	      // Time term
@@ -664,7 +664,7 @@ namespace VaporSaturation
 
 	      // Gravity term
 	      if(!project_Darcy_with_gravity)
-		copy_data.cell_rhs(i) += kappa*rho_v_fcn.value(pl_value_n, Sa_value_n, Sv_value_n)*rho_v*lambda_v
+		copy_data.cell_rhs(i) += kappa*rho_v*rho_v*lambda_v
 		  * gravity_fcn.vector_value(q_points[point])
 		  * fe_v.shape_grad(i, point)
 		  * JxW[point];
@@ -947,7 +947,7 @@ namespace VaporSaturation
 
 		  // Gravity
 		  if(!project_Darcy_with_gravity)
-		    copy_data.cell_rhs(i) -= kappa*rho_v_fcn.value(pl_value, Sa_value, Sv_nplus1_extrapolation)*rho_v*lambda_v
+		    copy_data.cell_rhs(i) -= kappa*rho_v*rho_v*lambda_v
 		      * gravity_fcn.vector_value(q_points[point])
 		      * normals[point]
 		      * fe_face.shape_value(i, point)
@@ -1400,8 +1400,8 @@ namespace VaporSaturation
 		  coef1_darcy = rho_v1*lambda_v1/rholambda_t_extr1;
 		}
 
-	      double Dg0 = kappa0*rho_v_fcn.value(pl_value0, Sa_value0, Sv_nplus1_extrapolation0)*rho_v0*lambda_v0;
-	      double Dg1 = kappa1*rho_v_fcn.value(pl_value1, Sa_value1, Sv_nplus1_extrapolation1)*rho_v1*lambda_v1;
+	      double Dg0 = kappa0*rho_v0*rho_v0*lambda_v0;
+	      double Dg1 = kappa1*rho_v1*rho_v1*lambda_v1;
 
 	      double psi_upwind = coef0_darcy*totalDarcyVelo_extrapolation0*normals[point]
 		+ coef1_darcy*totalDarcyVelo_extrapolation1*normals[point]
@@ -1431,8 +1431,8 @@ namespace VaporSaturation
 
 	      if(!project_Darcy_with_gravity)
 		{
-		  coef0_g = kappa0*rho_v_fcn.value(pl_value0, Sa_value0, Sv_nplus1_extrapolation0)*rho_v0*lambda_v0;
-		  coef1_g = kappa1*rho_v_fcn.value(pl_value1, Sa_value1, Sv_nplus1_extrapolation1)*rho_v1*lambda_v1;
+		  coef0_g = kappa0*rho_v0*rho_v0*lambda_v0;
+		  coef1_g = kappa1*rho_v1*rho_v1*lambda_v1;
 
 		  double weight0_g = coef1_g/(coef0_g + coef1_g + 1.e-20);
 		  double weight1_g = coef0_g/(coef0_g + coef1_g + 1.e-20);

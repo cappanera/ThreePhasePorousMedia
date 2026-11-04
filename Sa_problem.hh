@@ -682,7 +682,7 @@ namespace AqueousSaturation
 		}
 
 	      // Source term
-	      copy_data.cell_rhs(i) += right_hand_side_fcn.value(q_points[point]) * fe_v.shape_value(i, point) * JxW[point];
+	      copy_data.cell_rhs(i) += rhs_values[point] * fe_v.shape_value(i, point) * JxW[point];
 
 	      // Time term
 	      if(!second_order_time_derivative) // bdf1
@@ -719,7 +719,7 @@ namespace AqueousSaturation
 
 	      // Gravity term
 	      if(!project_Darcy_with_gravity)
-		copy_data.cell_rhs(i) += kappa*rho_a*rho_a_fcn.value(pl_value)*lambda_a
+		copy_data.cell_rhs(i) += kappa*rho_a*rho_a*lambda_a
 		  * gravity_fcn.vector_value(q_points[point])
 		  * fe_v.shape_grad(i, point)
 		  * JxW[point];
@@ -1094,7 +1094,7 @@ namespace AqueousSaturation
 
 		  // Gravity
 		  if(!project_Darcy_with_gravity)
-		    copy_data.cell_rhs(i) -= kappa*rho_a_fcn.value(pl_value)*rho_a*lambda_a
+		    copy_data.cell_rhs(i) -= kappa*rho_a*rho_a*lambda_a
 		      * gravity_fcn.vector_value(q_points[point])
 		      * normals[point]
 		      * fe_face.shape_value(i, point)
@@ -1634,8 +1634,8 @@ namespace AqueousSaturation
 		  coef1_darcy = rho_a1*lambda_a1/rholambda_t1;
 		}
 
-	      double Dg0 = kappa0*rho_a_fcn.value(pl_value0)*rho_a0*lambda_a0;
-	      double Dg1 = kappa1*rho_a_fcn.value(pl_value1)*rho_a1*lambda_a1;
+	      double Dg0 = kappa0*rho_a0*rho_a0*lambda_a0;
+	      double Dg1 = kappa1*rho_a1*rho_a1*lambda_a1;
 
 	      double psi_upwind = coef0_darcy*totalDarcyVelo_extrapolation0*normals[point]
 		+ coef1_darcy*totalDarcyVelo_extrapolation1*normals[point]
@@ -1665,8 +1665,8 @@ namespace AqueousSaturation
 
 	      if(!project_Darcy_with_gravity)
 		{
-		  coef0_g = kappa0*rho_a_fcn.value(pl_value0)*rho_a0*lambda_a0;
-		  coef1_g = kappa1*rho_a_fcn.value(pl_value1)*rho_a1*lambda_a1;
+		  coef0_g = kappa0*rho_a0*rho_a0*lambda_a0;
+		  coef1_g = kappa1*rho_a1*rho_a1*lambda_a1;
 
 		  double weight0_g = coef1_g/(coef0_g + coef1_g + 1.e-20);
 		  double weight1_g = coef0_g/(coef0_g + coef1_g + 1.e-20);

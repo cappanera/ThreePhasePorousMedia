@@ -94,7 +94,7 @@ namespace LiquidPressure
   class LiquidPressureProblem
   {
   public:
-    LiquidPressureProblem(Triangulation<dim, dim> &triangulation_,
+    LiquidPressureProblem(parallel::shared::Triangulation<dim> &triangulation_,
 			  const unsigned int degree_, double theta_pl_, double penalty_pl_,
 			  double penalty_pl_bdry_, std::vector<unsigned int> dirichlet_id_pl_, bool use_exact_Sa_in_pl_,
 			  bool use_exact_Sv_in_pl_, bool second_order_time_derivative_, bool second_order_extrapolation_,
@@ -114,7 +114,7 @@ namespace LiquidPressure
     PETScWrappers::MPI::Vector pl_solution;
   private:
 
-    parallel::shared::Triangulation<dim> triangulation;
+    const parallel::shared::Triangulation<dim> &triangulation;
     const MappingQ1<dim> mapping;
 
     using ScratchData = MeshWorker::ScratchData<dim>;
@@ -185,7 +185,7 @@ namespace LiquidPressure
   };
 
   template <int dim>
-  LiquidPressureProblem<dim>::LiquidPressureProblem(Triangulation<dim, dim> &triangulation_,
+  LiquidPressureProblem<dim>::LiquidPressureProblem(parallel::shared::Triangulation<dim> &triangulation_,
 						    const unsigned int degree_, double theta_pl_, double penalty_pl_,
 						    double penalty_pl_bdry_, std::vector<unsigned int> dirichlet_id_pl_, bool use_exact_Sa_in_pl_,
 						    bool use_exact_Sv_in_pl_,
@@ -193,7 +193,7 @@ namespace LiquidPressure
 						    bool use_direct_solver_,bool Stab_pl_, bool incompressible_, bool implicit_time_pl_,
 						    PETScWrappers::MPI::Vector kappa_abs_vec_,
 						    MPI_Comm mpi_communicator_, const unsigned int n_mpi_processes_, const unsigned int this_mpi_process_)
-  : triangulation(MPI_COMM_WORLD)
+  : triangulation(triangulation_)
   , mapping()
   , degree(degree_)
   , fe(degree_)
@@ -220,7 +220,7 @@ namespace LiquidPressure
   , this_mpi_process(this_mpi_process_)
   , pcout(std::cout, (this_mpi_process == 0))
   {
-    triangulation.copy_triangulation(triangulation_);
+    // triangulation.copy_triangulation(triangulation_);
   }
 
   template <int dim>
@@ -653,7 +653,7 @@ namespace LiquidPressure
 		}
 
 	      // Source term
-	      copy_data.cell_rhs(i) += right_hand_side_fcn.value(q_points[point]) * fe_v.shape_value(i, point) * JxW[point];
+	      copy_data.cell_rhs(i) += rhs_values[point] * fe_v.shape_value(i, point) * JxW[point];
 
 	      // addition from stab
 	      if(Stab_pl)

@@ -95,7 +95,7 @@ namespace VaporSaturation
   class VaporSaturationProblem
   {
   public:
-    VaporSaturationProblem(Triangulation<dim, dim> &triangulation_,
+    VaporSaturationProblem(parallel::shared::Triangulation<dim> &triangulation_,
 			   const unsigned int degree_,
 			   double theta_Sv_, double penalty_Sv_,
 			   double penalty_Sv_bdry_, std::vector<unsigned int> dirichlet_id_sv_, bool use_exact_pl_in_Sv_,
@@ -123,7 +123,7 @@ namespace VaporSaturation
   private:
 
 
-    parallel::shared::Triangulation<dim> triangulation;
+    const parallel::shared::Triangulation<dim> &triangulation;
     const MappingQ1<dim> mapping;
 
     const QGauss<dim>     quadrature;
@@ -207,7 +207,7 @@ namespace VaporSaturation
 
 
   template <int dim>
-  VaporSaturationProblem<dim>::VaporSaturationProblem(Triangulation<dim, dim> &triangulation_,
+  VaporSaturationProblem<dim>::VaporSaturationProblem(parallel::shared::Triangulation<dim> &triangulation_,
 						      const unsigned int degree_,
 						      double theta_Sv_, double penalty_Sv_,
 						      double penalty_Sv_bdry_, std::vector<unsigned int> dirichlet_id_sv_, bool use_exact_pl_in_Sv_,
@@ -217,7 +217,7 @@ namespace VaporSaturation
 						      PETScWrappers::MPI::Vector kappa_abs_vec_,
 						      const unsigned int degreeRT_, bool project_only_kappa_,
 						      MPI_Comm mpi_communicator_, const unsigned int n_mpi_processes_, const unsigned int this_mpi_process_)
-  : triangulation(MPI_COMM_WORLD)
+  : triangulation(triangulation_)
   , mapping()
   , degree(degree_)
   , fe(degree_)
@@ -248,7 +248,7 @@ namespace VaporSaturation
   , this_mpi_process(this_mpi_process_)
   , pcout(std::cout, (this_mpi_process == 0))
   {
-    triangulation.copy_triangulation(triangulation_);
+    // triangulation.copy_triangulation(triangulation_);
   }
 
   template <int dim>
@@ -1305,6 +1305,24 @@ namespace VaporSaturation
 	  double weight0_Sv_stab = coef1_Sv_stab/(coef0_Sv_stab + coef1_Sv_stab + 1.e-20);
 	  double weight1_Sv_stab = coef0_Sv_stab/(coef0_Sv_stab + coef1_Sv_stab + 1.e-20);
 
+	  std::vector<double> weighted_averages_stab(n_dofs);
+	  std::vector<double> weighted_averages(n_dofs);
+
+	  for (unsigned int i = 0; i < n_dofs; i++)
+	  {
+		  weighted_averages_stab[i] = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf, nsf, fe_iv,
+																						   normals[point],
+																					 i, point,
+																					 coef0_diff_stab, coef1_diff_stab,
+																					 weight0_diff_stab, weight1_diff_stab);
+
+		  weighted_averages_stab[i] = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf, nsf, fe_iv,
+																						   normals[point],
+																					 i, point,
+																					 coef0_diff_stab, coef1_diff_stab,
+																					 weight0_diff, weight1_diff);
+	  }
+
 	  // start of interior face terms
 	  for (unsigned int i = 0; i < n_dofs; ++i)
 	    {
@@ -1321,23 +1339,27 @@ namespace VaporSaturation
 
 		      if (Stab_v)
 			{
-			  double weighted_aver_j_stab = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf,
-													     nsf, fe_iv,
-													     normals[point],
-													     j, point,
-													     coef0_diff_stab, coef1_diff_stab,
-													     weight0_diff_stab, weight1_diff_stab);
+			  // double weighted_aver_j_stab = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf,
+					// 								     nsf, fe_iv,
+					// 								     normals[point],
+					// 								     j, point,
+					// 								     coef0_diff_stab, coef1_diff_stab,
+					// 								     weight0_diff_stab, weight1_diff_stab);
+				double weighted_aver_j_stab = weighted_averages_stab[j];
+
 			  copy_data_face.cell_matrix(i, j) -=
 			    fe_iv.jump_in_shape_values(i, point)
 			    * weighted_aver_j_stab
 			    * JxW[point];
 
-			  double weighted_aver_i_stab = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf,
-													     nsf, fe_iv,
-													     normals[point],
-													     i, point,
-													     coef0_diff_stab, coef1_diff_stab,
-													     weight0_diff_stab, weight1_diff_stab);
+			  // double weighted_aver_i_stab = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf,
+					// 								     nsf, fe_iv,
+					// 								     normals[point],
+					// 								     i, point,
+					// 								     coef0_diff_stab, coef1_diff_stab,
+					// 								     weight0_diff_stab, weight1_diff_stab);
+				double weighted_aver_i_stab = weighted_averages_stab[i];
+
 			  copy_data_face.cell_matrix(i, j) +=
 			    theta_Sv
 			    * fe_iv.jump_in_shape_values(j, point)
@@ -1346,23 +1368,29 @@ namespace VaporSaturation
 			}
 		      else
 			{
-			  double weighted_aver_j = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf,
-													nsf, fe_iv,
-													normals[point],
-													j, point,
-													coef0_diff, coef1_diff,
-													weight0_diff, weight1_diff);
+			  // double weighted_aver_j = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf,
+					// 								nsf, fe_iv,
+					// 								normals[point],
+					// 								j, point,
+					// 								coef0_diff, coef1_diff,
+					// 								weight0_diff, weight1_diff);
+
+			  double weighted_aver_j = weighted_averages[j];
+
 			  copy_data_face.cell_matrix(i, j) -=
 			    fe_iv.jump_in_shape_values(i, point)
 			    * weighted_aver_j
 			    * JxW[point];
 
-			  double weighted_aver_i = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf,
-													nsf, fe_iv,
-													normals[point],
-													i, point,
-													coef0_diff, coef1_diff,
-													weight0_diff, weight1_diff);
+			  // double weighted_aver_i = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf,
+					// 								nsf, fe_iv,
+					// 								normals[point],
+					// 								i, point,
+					// 								coef0_diff, coef1_diff,
+					// 								weight0_diff, weight1_diff);
+
+			  double weighted_aver_i = weighted_averages[i];
+
 			  copy_data_face.cell_matrix(i, j) +=
 			    theta_Sv
 			    * fe_iv.jump_in_shape_values(j, point)

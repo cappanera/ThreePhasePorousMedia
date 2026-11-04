@@ -57,6 +57,57 @@ namespace AqueousSaturation
 {
   using namespace dealii;
 
+  template <int dim>
+  struct ScratchData
+  {
+	  ScratchData(const Mapping<dim>        &mapping,
+				  const FiniteElement<dim>  &fe,
+			   const FiniteElement<dim>  &fe_RT,
+			   const Quadrature<dim>     &quadrature,
+			   const Quadrature<dim - 1> &quadrature_face,
+			   const UpdateFlags          update_flags = update_values |
+			   update_gradients |
+			   update_quadrature_points |
+			   update_JxW_values,
+			   const UpdateFlags interface_update_flags =
+			   update_values | update_gradients | update_quadrature_points |
+			   update_JxW_values | update_normal_vectors)
+	  : fe_values(mapping, fe, quadrature, update_flags)
+	  , fe_values_RT(mapping, fe_RT, quadrature, update_flags)
+	  , fe_interface_values(mapping,
+							fe,
+						 quadrature_face,
+						 interface_update_flags)
+	  , fe_interface_values_RT(fe_RT,
+							   quadrature_face,
+							interface_update_flags)
+	  {}
+
+
+	  ScratchData(const ScratchData<dim> &scratch_data)
+	  : fe_values(scratch_data.fe_values.get_mapping(),
+				  scratch_data.fe_values.get_fe(),
+				  scratch_data.fe_values.get_quadrature(),
+				  scratch_data.fe_values.get_update_flags())
+	  , fe_values_RT(scratch_data.fe_values_RT.get_mapping(),
+				  scratch_data.fe_values_RT.get_fe(),
+				  scratch_data.fe_values_RT.get_quadrature(),
+				  scratch_data.fe_values_RT.get_update_flags())
+	  , fe_interface_values(scratch_data.fe_interface_values.get_mapping(),
+							scratch_data.fe_interface_values.get_fe(),
+							scratch_data.fe_interface_values.get_quadrature(),
+							scratch_data.fe_interface_values.get_update_flags())
+	  , fe_interface_values_RT(scratch_data.fe_interface_values_RT.get_fe(),
+							scratch_data.fe_interface_values_RT.get_quadrature(),
+							scratch_data.fe_interface_values_RT.get_update_flags())
+	  {}
+
+	  FEValues<dim>          fe_values;
+	  FEValues<dim>          fe_values_RT;
+	  FEInterfaceValues<dim> fe_interface_values;
+	  FEInterfaceValues<dim> fe_interface_values_RT;
+  };
+
   struct CopyDataFace
   {
     FullMatrix<double>                   cell_matrix;
@@ -95,7 +146,7 @@ namespace AqueousSaturation
   class AqueousSaturationProblem
   {
   public:
-    AqueousSaturationProblem(Triangulation<dim, dim> &triangulation_,
+    AqueousSaturationProblem(parallel::shared::Triangulation<dim> &triangulation_,
 			     const unsigned int degree_, double theta_Sa_, double penalty_Sa_,
 			     double penalty_Sa_bdry_, std::vector<unsigned int> dirichlet_id_sa_, bool use_exact_pl_in_Sa_,
 			     bool use_exact_Sv_in_Sa_,
@@ -123,13 +174,13 @@ namespace AqueousSaturation
     PETScWrappers::MPI::Vector Sa_solution;
   private:
 
-    parallel::shared::Triangulation<dim> triangulation;
+    const parallel::shared::Triangulation<dim> &triangulation;
     const MappingQ1<dim> mapping;
 
     const QGauss<dim> quadrature;
     const QGauss<dim - 1> face_quadrature;
 
-    using ScratchData = MeshWorker::ScratchData<dim>;
+    // using ScratchData = MeshWorker::ScratchData<dim>;
 
     FE_DGQ<dim> fe;
     DoFHandler<dim> dof_handler;
@@ -209,7 +260,7 @@ namespace AqueousSaturation
   };
 
   template <int dim>
-  AqueousSaturationProblem<dim>::AqueousSaturationProblem(Triangulation<dim, dim> &triangulation_,
+  AqueousSaturationProblem<dim>::AqueousSaturationProblem(parallel::shared::Triangulation<dim> &triangulation_,
 							  const unsigned int degree_,  double theta_Sa_, double penalty_Sa_,
 							  double penalty_Sa_bdry_, std::vector<unsigned int> dirichlet_id_sa_, bool use_exact_pl_in_Sa_,
 							  bool use_exact_Sv_in_Sa_,
@@ -220,7 +271,7 @@ namespace AqueousSaturation
 							  PETScWrappers::MPI::Vector kappa_abs_vec_,
 							  const unsigned int degreeRT_, bool project_only_kappa_,
 							  MPI_Comm mpi_communicator_, const unsigned int n_mpi_processes_, const unsigned int this_mpi_process_)
-  : triangulation(MPI_COMM_WORLD)
+  : triangulation(triangulation_)
   , mapping()
   , degree(degree_)
   , fe(degree_)
@@ -254,7 +305,7 @@ namespace AqueousSaturation
   , this_mpi_process(this_mpi_process_)
   , pcout(std::cout, (this_mpi_process == 0))
   {
-    triangulation.copy_triangulation(triangulation_);
+    // triangulation.copy_triangulation(triangulation_);
   }
 
   template <int dim>
@@ -315,14 +366,6 @@ namespace AqueousSaturation
     time_step = time_step_;
     time = time_;
     timestep_number = timestep_number_;
-
-    FEFaceValues<dim> fe_face_values_RT(fe_RT,
-					face_quadrature,
-					update_values);
-
-    FEFaceValues<dim> fe_face_values_RT_neighbor(fe_RT,
-						 face_quadrature,
-						 update_values);
 
     const FEValuesExtractors::Vector velocities(0);
 
@@ -433,16 +476,17 @@ namespace AqueousSaturation
 
     // Volume integrals
     const auto cell_worker = [&](const auto &cell,
-				 auto &scratch_data,
+				 ScratchData<dim> &scratch_data,
 				 auto & copy_data)
     {
-      const FEValues<dim> &fe_v = scratch_data.reinit(cell);
+		scratch_data.fe_values.reinit(cell);
+      const FEValues<dim>       &fe_v = scratch_data.fe_values;
 
       const unsigned int n_dofs = fe_v.dofs_per_cell;
 
       // reinit used here for copy data
       if (rebuild_matrix){
-	copy_data.reinit_matrix(cell, n_dofs);
+		copy_data.reinit_matrix(cell, n_dofs);
       }
 
       copy_data.reinit_rhs(cell, n_dofs);
@@ -452,14 +496,10 @@ namespace AqueousSaturation
 
       const std::vector<double> &JxW  = fe_v.get_JxW_values();
 
-      FEValues<dim> fe_values_RT(fe_RT,
-				 quadrature,
-				 update_values);
+	  auto cell_RT = cell->as_dof_handler_iterator(dof_handler_RT);
 
-      typename DoFHandler<dim>::cell_iterator cell_RT(&triangulation,
-						      cell->level(), cell->index(), &dof_handler_RT);
-
-      fe_values_RT.reinit(cell_RT);
+	  scratch_data.fe_values_RT.reinit(cell_RT);
+	  const FEValues<dim>       &fe_values_RT = scratch_data.fe_values_RT;
 
       std::vector<double>         rhs_values(n_qpoints);
       right_hand_side_fcn.set_time(time);
@@ -504,17 +544,17 @@ namespace AqueousSaturation
       fe_values_RT[velocities].get_function_values(temp_totalDarcyVelocity_RT, DarcyVelocities);
 
       // get maximum of Darcy Velocity, This is for artificial viscosity stuff
-      std::vector<double> linf_norm_Darcy_vel(n_qpoints);
-      for(unsigned int kk = 0; kk < n_qpoints; kk++)
-	{
-	  Vector<double> darcy_v(dim);
-	  for(unsigned int jj = 0; jj < dim; jj++)
-	    darcy_v[jj] = DarcyVelocities[kk][jj];
+ //      std::vector<double> linf_norm_Darcy_vel(n_qpoints);
+ //      for(unsigned int kk = 0; kk < n_qpoints; kk++)
+	// {
+	//   Vector<double> darcy_v(dim);
+	//   for(unsigned int jj = 0; jj < dim; jj++)
+	//     darcy_v[jj] = DarcyVelocities[kk][jj];
+ //
+	//   linf_norm_Darcy_vel[kk] = darcy_v.linfty_norm();
+	// }
 
-	  linf_norm_Darcy_vel[kk] = darcy_v.linfty_norm();
-	}
-
-      double maximum_Darcy = *std::max_element(linf_norm_Darcy_vel.begin(), linf_norm_Darcy_vel.end());
+      double maximum_Darcy = 0.0;//*std::max_element(linf_norm_Darcy_vel.begin(), linf_norm_Darcy_vel.end());
 
 
       double maximum_Sa = *std::max_element(old_Sa_vals.begin(), old_Sa_vals.end());
@@ -735,28 +775,37 @@ namespace AqueousSaturation
     };
 
     // Boundary face integrals
-    const auto boundary_worker = [&](const auto &cell,
-				     const unsigned int &face_no,
-				     auto &scratch_data,
-				     auto & copy_data)
+	const auto boundary_worker = [&](const Iterator     &cell,
+									 const unsigned int &face_no,
+								  ScratchData<dim>   &scratch_data,
+								  CopyData           &copy_data)
     {
-      const FEFaceValuesBase<dim> &fe_face = scratch_data.reinit(cell, face_no);
+      // const FEFaceValuesBase<dim> &fe_face = scratch_data.reinit(cell, face_no);
+		scratch_data.fe_interface_values.reinit(cell, face_no);
+		const FEFaceValuesBase<dim> &fe_face =
+		scratch_data.fe_interface_values.get_fe_face_values(0);
 
-      const auto &q_points = scratch_data.get_quadrature_points();
+      const auto &q_points = fe_face.get_quadrature_points();
       const int n_qpoints = q_points.size();
 
-      FEFaceValues<dim> fe_face_values_RT(fe_RT,
-					  face_quadrature,
-					  update_values);
+	  auto cell_RT = cell->as_dof_handler_iterator(dof_handler_RT);
 
-      typename DoFHandler<dim>::cell_iterator cell_RT(&triangulation,
-						      cell->level(), cell->index(), &dof_handler_RT);
+	  scratch_data.fe_interface_values_RT.reinit(cell_RT, face_no);
+	  const FEFaceValuesBase<dim> &fe_face_values_RT =
+	  scratch_data.fe_interface_values_RT.get_fe_face_values(0);
 
-      fe_face_values_RT.reinit(cell_RT, face_no);
+      // FEFaceValues<dim> fe_face_values_RT(fe_RT,
+					 //  face_quadrature,
+					 //  update_values);
+
+      // typename DoFHandler<dim>::cell_iterator cell_RT(&triangulation,
+						//       cell->level(), cell->index(), &dof_handler_RT);
+      //
+      // fe_face_values_RT.reinit(cell_RT, face_no);
 
       const unsigned int n_facet_dofs = fe_face.dofs_per_cell;
-      const std::vector<double> &        JxW     = scratch_data.get_JxW_values();
-      const std::vector<Tensor<1, dim>> &normals = scratch_data.get_normal_vectors();
+      const std::vector<double> &        JxW     = fe_face.get_JxW_values();
+      const std::vector<Tensor<1, dim>> &normals = fe_face.get_normal_vectors();
 
       std::vector<double> g(n_qpoints);
       boundary_function.set_time(time);
@@ -802,18 +851,18 @@ namespace AqueousSaturation
       fe_face_values_RT[velocities].get_function_values(temp_totalDarcyVelocity_RT, DarcyVelocities);
 
       // get maximum of Darcy Velocity. Art visc stuff (not fully tested/working)
-      std::vector<double> linf_norm_Darcy_vel(n_qpoints);
-      for(unsigned int kk = 0; kk < n_qpoints; kk++)
-	{
-	  Vector<double> darcy_v(dim);
-	  for(unsigned int jj = 0; jj < dim; jj++)
-	    darcy_v[jj] = DarcyVelocities[kk][jj];
+ //      std::vector<double> linf_norm_Darcy_vel(n_qpoints);
+ //      for(unsigned int kk = 0; kk < n_qpoints; kk++)
+	// {
+	//   Vector<double> darcy_v(dim);
+	//   for(unsigned int jj = 0; jj < dim; jj++)
+	//     darcy_v[jj] = DarcyVelocities[kk][jj];
+ //
+	//   linf_norm_Darcy_vel[kk] = darcy_v.linfty_norm();
+	// }
 
-	  linf_norm_Darcy_vel[kk] = darcy_v.linfty_norm();
-	}
-
-      double maximum_Darcy = *std::max_element(linf_norm_Darcy_vel.begin(), linf_norm_Darcy_vel.end());
-      double maximum_Sa = *std::max_element(old_Sa_vals.begin(), old_Sa_vals.end());
+      double maximum_Darcy = 0.0;//*std::max_element(linf_norm_Darcy_vel.begin(), linf_norm_Darcy_vel.end());
+      double maximum_Sa = 0.0;//*std::max_element(old_Sa_vals.begin(), old_Sa_vals.end());
 
       double kappa = temp_kappa[cell->global_active_cell_index()];
 
@@ -1207,10 +1256,11 @@ namespace AqueousSaturation
 				 const auto &ncell,
 				 const unsigned int &nf,
 				 const unsigned int &nsf,
-				 auto &scratch_data,
+				 ScratchData<dim> &scratch_data,
 				 auto & copy_data)
     {
-      const FEInterfaceValues<dim> &fe_iv = scratch_data.reinit(cell, f, sf, ncell, nf, nsf);
+		FEInterfaceValues<dim> &fe_iv = scratch_data.fe_interface_values;
+		fe_iv.reinit(cell, f, sf, ncell, nf, nsf);
 
       const auto &q_points = fe_iv.get_quadrature_points();
       const int n_qpoints = q_points.size();
@@ -1233,21 +1283,30 @@ namespace AqueousSaturation
       const std::vector<double> &        JxW     = fe_iv.get_JxW_values();
       const std::vector<Tensor<1, dim>> &normals = fe_iv.get_normal_vectors();
 
-      FEFaceValues<dim> fe_face_values_RT(fe_RT,
-					  face_quadrature,
-					  update_values);
+      // FEFaceValues<dim> fe_face_values_RT(fe_RT,
+					 //  face_quadrature,
+					 //  update_values);
+      //
+      // FEFaceValues<dim> fe_face_values_RT_neighbor(fe_RT,
+						//    face_quadrature,
+						//    update_values);
+      //
+      // typename DoFHandler<dim>::cell_iterator cell_RT(&triangulation,
+						//       cell->level(), cell->index(), &dof_handler_RT);
+      // typename DoFHandler<dim>::cell_iterator cell_RT_neighbor(&triangulation,
+						// 	       ncell->level(), ncell->index(), &dof_handler_RT);
+      //
+      // fe_face_values_RT.reinit(cell_RT, f);
+      // fe_face_values_RT_neighbor.reinit(cell_RT_neighbor, nf);
 
-      FEFaceValues<dim> fe_face_values_RT_neighbor(fe_RT,
-						   face_quadrature,
-						   update_values);
+	  auto cell_RT = cell->as_dof_handler_iterator(dof_handler_RT);
+	  auto ncell_RT = ncell->as_dof_handler_iterator(dof_handler_RT);
 
-      typename DoFHandler<dim>::cell_iterator cell_RT(&triangulation,
-						      cell->level(), cell->index(), &dof_handler_RT);
-      typename DoFHandler<dim>::cell_iterator cell_RT_neighbor(&triangulation,
-							       ncell->level(), ncell->index(), &dof_handler_RT);
+	  FEInterfaceValues<dim> &fe_iv_RT = scratch_data.fe_interface_values_RT;
+	  fe_iv_RT.reinit(cell_RT, f, sf, ncell_RT, nf, nsf);
 
-      fe_face_values_RT.reinit(cell_RT, f);
-      fe_face_values_RT_neighbor.reinit(cell_RT_neighbor, nf);
+	  const FEFaceValuesBase<dim> &fe_face_values_RT = fe_iv_RT.get_fe_face_values(0);
+	  const FEFaceValuesBase<dim> &fe_face_values_RT_neighbor = fe_iv_RT.get_fe_face_values(1);
 
       gravity_fcn.set_time(time);
 
@@ -1531,7 +1590,23 @@ namespace AqueousSaturation
 	  double weight0_Sa_stab = coef1_Sa_stab/(coef0_Sa_stab + coef1_Sa_stab + 1.e-20);
 	  double weight1_Sa_stab = coef0_Sa_stab/(coef0_Sa_stab + coef1_Sa_stab + 1.e-20);
 
+	  std::vector<double> weighted_averages_stab(n_dofs);
+	  std::vector<double> weighted_averages(n_dofs);
 
+	  for (unsigned int i = 0; i < n_dofs; i++)
+	  {
+		  weighted_averages_stab[i] = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf, nsf, fe_iv,
+																				normals[point],
+																				i, point,
+																				coef0_diff_stab, coef1_diff_stab,
+	  																		weight0_diff_stab, weight1_diff_stab);
+
+		  weighted_averages_stab[i] = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf, nsf, fe_iv,
+																						   normals[point],
+																					 i, point,
+																					 coef0_diff_stab, coef1_diff_stab,
+																					 weight0_diff, weight1_diff);
+	  }
 	  // start of interior face terms
 	  for (unsigned int i = 0; i < n_dofs; ++i)
 	    {
@@ -1547,50 +1622,30 @@ namespace AqueousSaturation
 			* JxW[point];
 		      if (Stab_a)
 			{
-			  double weighted_aver_j_stab = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf,
-													     nsf, fe_iv,
-													     normals[point],
-													     j, point,
-													     coef0_diff_stab, coef1_diff_stab,
-													     weight0_diff_stab, weight1_diff_stab);
+
 			  copy_data_face.cell_matrix(i, j) -=
 			    fe_iv.jump_in_shape_values(i, point)
-			    * weighted_aver_j_stab
+			    * weighted_averages_stab[j]
 			    * JxW[point];
-			  double weighted_aver_i_stab = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf,
-													     nsf, fe_iv,
-													     normals[point],
-													     i, point,
-													     coef0_diff_stab, coef1_diff_stab,
-													     weight0_diff_stab, weight1_diff_stab);
+
 			  copy_data_face.cell_matrix(i, j) +=
 			    theta_Sa
 			    * fe_iv.jump_in_shape_values(j, point)
-			    * weighted_aver_i_stab
+			    * weighted_averages_stab[i]
 			    * JxW[point];
 			}
 		      else
 			{
-			  double weighted_aver_j = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf,
-													nsf, fe_iv,
-													normals[point],
-													j, point,
-													coef0_diff, coef1_diff,
-													weight0_diff, weight1_diff);
+
 			  copy_data_face.cell_matrix(i, j) -=
 			    fe_iv.jump_in_shape_values(i, point)
-			    * weighted_aver_j
+			    * weighted_averages[j]
 			    * JxW[point];
-			  double weighted_aver_i = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf,
-													nsf, fe_iv,
-													normals[point],
-													i, point,
-													coef0_diff, coef1_diff,
-													weight0_diff, weight1_diff);
+
 			  copy_data_face.cell_matrix(i, j) +=
 			    theta_Sa
 			    * fe_iv.jump_in_shape_values(j, point)
-			    * weighted_aver_i
+			    * weighted_averages[i]
 			    * JxW[point];
 			}
 		    }
@@ -1743,7 +1798,8 @@ namespace AqueousSaturation
       update_quadrature_points |
       update_normal_vectors | update_JxW_values;
 
-    ScratchData scratch_data(mapping, fe, quadrature, cell_flags, face_quadrature, face_flags);
+    // ScratchData scratch_data(mapping, fe, quadrature, cell_flags, face_quadrature, face_flags);
+	ScratchData<dim> scratch_data(mapping, fe, fe_RT, quadrature, face_quadrature);
     CopyData         copy_data;
 
     const auto filtered_iterator_range =

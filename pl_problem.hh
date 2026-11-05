@@ -143,6 +143,7 @@ namespace LiquidPressure
 
     PETScWrappers::MPI::SparseMatrix system_matrix_pressure;
     PETScWrappers::MPI::Vector right_hand_side_pressure;
+    PETScWrappers::PreconditionBoomerAMG preconditioner;
 
     FE_DGQ<dim> fe_dg0;
     DoFHandler<dim> dof_handler_dg0;
@@ -1618,6 +1619,7 @@ namespace LiquidPressure
   void LiquidPressureProblem<dim>::solve_pressure()
   {
     pl_solution.reinit(locally_owned_dofs, mpi_communicator);
+
     //    std::map<types::global_dof_index, double> boundary_values;
     //        VectorTools::interpolate_boundary_values(dof_handler,
     //                                                 1,
@@ -1634,12 +1636,12 @@ namespace LiquidPressure
       }
     else
       {
-	//		std::cout << "tol = " << 1.e-7 * right_hand_side_pressure.l2_norm() << std::endl;
 	SolverControl solver_control(pl_solution.size(), 1.e-7 * right_hand_side_pressure.l2_norm());
-	//		SolverControl solver_control(pl_solution.size(), 1.e-8);
 
 	PETScWrappers::SolverGMRES gmres(solver_control, mpi_communicator);
-	PETScWrappers::PreconditionBoomerAMG preconditioner(system_matrix_pressure);
+	// PETScWrappers::PreconditionBoomerAMG preconditioner(system_matrix_pressure);
+        if(rebuild_matrix)
+                preconditioner.initialize(system_matrix_pressure);
 
 	gmres.solve(system_matrix_pressure, pl_solution, right_hand_side_pressure, preconditioner);
 

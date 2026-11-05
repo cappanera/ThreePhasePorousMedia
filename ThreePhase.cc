@@ -467,7 +467,7 @@ namespace CouplingPressureSaturation
 
 	    timer.reset();
 	    timer.start();
-	    Sa_problem.solve_aqueous_saturation(pl_solution);
+	    Sa_problem.solve_aqueous_saturation();
 	    timer.stop();
 
 	    solver_time[index_time] += timer.cpu_time();
@@ -504,7 +504,7 @@ namespace CouplingPressureSaturation
 
 		timer.reset();
 		timer.start();
-		Sv_problem.solve_vapor_saturation(pl_solution);
+		Sv_problem.solve_vapor_saturation();
 		timer.stop();
 
 		solver_time[index_time] = timer.cpu_time();

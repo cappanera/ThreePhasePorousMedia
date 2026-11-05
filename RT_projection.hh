@@ -49,11 +49,14 @@ namespace RT_Projection
   //using namespace FE_RTProj;
 
   template<int dim>
-  PETScWrappers::MPI::Vector compute_RT0_projection(Triangulation<dim, dim> &triangulation, const unsigned int degree, double theta_pl, double time,
+  PETScWrappers::MPI::Vector compute_RT0_projection(parallel::shared::Triangulation<dim> &triangulation, const unsigned int degree, double theta_pl, double time,
 						    double time_step, double penalty_pl, double penalty_pl_bdry, std::vector<unsigned int> dirichlet_id_pl, bool use_exact_pl_in_RT0,
 						    bool use_exact_Sa_in_RT0, bool use_exact_Sv_in_RT0, bool second_order_extrapolation, bool incompressible,
-						    PETScWrappers::MPI::Vector pl_solution, PETScWrappers::MPI::Vector Sa_solution_n, PETScWrappers::MPI::Vector Sa_solution_nminus1,
-						    PETScWrappers::MPI::Vector Sv_solution_n, PETScWrappers::MPI::Vector Sv_solution_nminus1, PETScWrappers::MPI::Vector kappa_abs_vec,
+						    const PETScWrappers::MPI::Vector &pl_solution,
+							const PETScWrappers::MPI::Vector &Sa_solution_n,
+							const PETScWrappers::MPI::Vector &Sa_solution_nminus1,
+						    const PETScWrappers::MPI::Vector &Sv_solution_n,
+							const PETScWrappers::MPI::Vector &Sv_solution_nminus1, PETScWrappers::MPI::Vector kappa_abs_vec,
 						    bool project_only_kappa, MPI_Comm mpi_communicator, const unsigned int n_mpi_processes, const unsigned int this_mpi_process)
   {
     ConditionalOStream pcout(std::cout, (this_mpi_process == 0));
@@ -221,49 +224,55 @@ namespace RT_Projection
     const unsigned int n_q_points_face_DG = fe_face_values_DG.get_quadrature().size();
     const unsigned int n_q_points_face_test_scalar = fe_face_values_test_scalar.get_quadrature().size();
 
-    PETScWrappers::MPI::Vector temp_pl_solution;
-
-    PETScWrappers::MPI::Vector temp_Sa_solution_n;
-    PETScWrappers::MPI::Vector temp_Sa_solution_nminus1;
-
-    PETScWrappers::MPI::Vector temp_Sv_solution_n;
-    PETScWrappers::MPI::Vector temp_Sv_solution_nminus1;
-
     PETScWrappers::MPI::Vector temp_kappa;
 
-    temp_pl_solution.reinit(locally_owned_dofs_DG,
-			    locally_relevant_dofs_DG,
-			    mpi_communicator);
+	temp_kappa.reinit(locally_owned_dofs_dg0,
+					  locally_relevant_dofs_dg0,
+					  mpi_communicator);
 
-    temp_Sa_solution_n.reinit(locally_owned_dofs_DG,
-			      locally_relevant_dofs_DG,
-			      mpi_communicator);
+	temp_kappa = kappa_abs_vec;
 
-    temp_Sa_solution_nminus1.reinit(locally_owned_dofs_DG,
-				    locally_relevant_dofs_DG,
-				    mpi_communicator);
+	PETScWrappers::MPI::Vector pl_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
 
-    temp_Sv_solution_n.reinit(locally_owned_dofs_DG,
-			      locally_relevant_dofs_DG,
-			      mpi_communicator);
+	pl_ghosted = pl_solution;
+	pl_ghosted.update_ghost_values();
 
-    temp_Sv_solution_nminus1.reinit(locally_owned_dofs_DG,
-				    locally_relevant_dofs_DG,
-				    mpi_communicator);
+	PETScWrappers::MPI::Vector Sa_n_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
 
-    temp_kappa.reinit(locally_owned_dofs_dg0,
-		      locally_relevant_dofs_dg0,
-		      mpi_communicator);
+	Sa_n_ghosted = Sa_solution_n;
+	Sa_n_ghosted.update_ghost_values();
 
-    temp_pl_solution = pl_solution;
+	PETScWrappers::MPI::Vector Sa_nminus1_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
 
-    temp_Sa_solution_n = Sa_solution_n;
-    temp_Sa_solution_nminus1 = Sa_solution_nminus1;
+	Sa_nminus1_ghosted = Sa_solution_nminus1;
+	Sa_nminus1_ghosted.update_ghost_values();
 
-    temp_Sv_solution_n = Sv_solution_n;
-    temp_Sv_solution_nminus1 = Sv_solution_nminus1;
+	PETScWrappers::MPI::Vector Sv_n_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
 
-    temp_kappa = kappa_abs_vec;
+	Sv_n_ghosted = Sv_solution_n;
+	Sv_n_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sv_nminus1_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
+
+	Sv_nminus1_ghosted = Sv_solution_nminus1;
+	Sv_nminus1_ghosted.update_ghost_values();
+
+
 
     // Loop over cells
     for (; cell_DG != endc; ++cell_DG, ++cell_RT0, ++cell_scalar)
@@ -317,22 +326,22 @@ namespace RT_Projection
 		if(face->at_boundary())
 		  {
 		    std::vector<double> pl_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_pl_solution, pl_vals_face);
+		    fe_face_values_DG.get_function_values(pl_ghosted, pl_vals_face);
 
 		    std::vector<double> Sa_vals_face_n(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sa_solution_n, Sa_vals_face_n);
+		    fe_face_values_DG.get_function_values(Sa_n_ghosted, Sa_vals_face_n);
 
 		    std::vector<double> Sa_vals_face_nminus1(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sa_solution_nminus1, Sa_vals_face_nminus1);
+		    fe_face_values_DG.get_function_values(Sa_nminus1_ghosted, Sa_vals_face_nminus1);
 
 		    std::vector<double> Sv_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sv_solution_n, Sv_vals_face);
+		    fe_face_values_DG.get_function_values(Sv_n_ghosted, Sv_vals_face);
 
 		    std::vector<double> Sv_vals_face_nminus1(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sv_solution_nminus1, Sv_vals_face_nminus1);
+		    fe_face_values_DG.get_function_values(Sv_nminus1_ghosted, Sv_vals_face_nminus1);
 
 		    std::vector<Tensor<1, dim>> grad_pl_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_gradients(temp_pl_solution, grad_pl_face);
+		    fe_face_values_DG.get_function_gradients(pl_ghosted, grad_pl_face);
 
 		    double kappa = temp_kappa[cell_DG->global_active_cell_index()];
 
@@ -455,40 +464,40 @@ namespace RT_Projection
 		    fe_face_values_DG_neighbor.reinit(cell_DG_neighbor, face);
 
 		    std::vector<double> pl_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_pl_solution, pl_vals_face);
+		    fe_face_values_DG.get_function_values(pl_ghosted, pl_vals_face);
 
 		    std::vector<double> pl_vals_face_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_pl_solution, pl_vals_face_neighbor);
+		    fe_face_values_DG_neighbor.get_function_values(pl_ghosted, pl_vals_face_neighbor);
 
 		    std::vector<double> Sa_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sa_solution_n, Sa_vals_face);
+		    fe_face_values_DG.get_function_values(Sa_n_ghosted, Sa_vals_face);
 
 		    std::vector<double> Sa_vals_face_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_Sa_solution_n, Sa_vals_face_neighbor);
+		    fe_face_values_DG_neighbor.get_function_values(Sa_n_ghosted, Sa_vals_face_neighbor);
 
 		    std::vector<double> Sa_vals_face_nminus1(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sa_solution_nminus1, Sa_vals_face_nminus1);
+		    fe_face_values_DG.get_function_values(Sa_nminus1_ghosted, Sa_vals_face_nminus1);
 
 		    std::vector<double> Sa_vals_face_nminus1_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_Sa_solution_nminus1, Sa_vals_face_nminus1_neighbor);
+		    fe_face_values_DG_neighbor.get_function_values(Sa_nminus1_ghosted, Sa_vals_face_nminus1_neighbor);
 
 		    std::vector<double> Sv_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sv_solution_n, Sv_vals_face);
+		    fe_face_values_DG.get_function_values(Sv_n_ghosted, Sv_vals_face);
 
 		    std::vector<double> Sv_vals_face_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_Sv_solution_n, Sv_vals_face_neighbor);
+		    fe_face_values_DG_neighbor.get_function_values(Sv_n_ghosted, Sv_vals_face_neighbor);
 
 		    std::vector<double> Sv_vals_face_nminus1(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sv_solution_nminus1, Sv_vals_face_nminus1);
+		    fe_face_values_DG.get_function_values(Sv_nminus1_ghosted, Sv_vals_face_nminus1);
 
 		    std::vector<double> Sv_vals_face_nminus1_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_Sv_solution_nminus1, Sv_vals_face_nminus1_neighbor);
+		    fe_face_values_DG_neighbor.get_function_values(Sv_nminus1_ghosted, Sv_vals_face_nminus1_neighbor);
 
 		    std::vector<Tensor<1, dim>> grad_pl_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_gradients(temp_pl_solution, grad_pl_face);
+		    fe_face_values_DG.get_function_gradients(pl_ghosted, grad_pl_face);
 
 		    std::vector<Tensor<1, dim>> grad_pl_face_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_gradients(temp_pl_solution, grad_pl_face_neighbor);
+		    fe_face_values_DG_neighbor.get_function_gradients(pl_ghosted, grad_pl_face_neighbor);
 
 		    double kappa0 = temp_kappa[cell_DG->global_active_cell_index()];
 		    double kappa1 = temp_kappa[cell_DG_neighbor->global_active_cell_index()];
@@ -669,8 +678,11 @@ namespace RT_Projection
 								 const unsigned int degree, double theta_pl, double time, double time_step, double penalty_pl, double penalty_pl_bdry,
 								 std::vector<unsigned int> dirichlet_id_pl, bool use_exact_pl_in_RT0,
 								 bool use_exact_Sa_in_RT0, bool use_exact_Sv_in_RT0, bool second_order_extrapolation, bool incompressible,
-								 PETScWrappers::MPI::Vector pl_solution, PETScWrappers::MPI::Vector Sa_solution_n, PETScWrappers::MPI::Vector Sa_solution_nminus1,
-								 PETScWrappers::MPI::Vector Sv_solution_n, PETScWrappers::MPI::Vector Sv_solution_nminus1, PETScWrappers::MPI::Vector kappa_abs_vec,
+								 const PETScWrappers::MPI::Vector &pl_solution,
+								 const PETScWrappers::MPI::Vector &Sa_solution_n,
+								 const PETScWrappers::MPI::Vector &Sa_solution_nminus1,
+								 const PETScWrappers::MPI::Vector &Sv_solution_n,
+								 const PETScWrappers::MPI::Vector &Sv_solution_nminus1, PETScWrappers::MPI::Vector kappa_abs_vec,
 								 bool use_Sa, bool project_only_kappa, MPI_Comm mpi_communicator, const unsigned int n_mpi_processes, const unsigned int this_mpi_process)
   {
     const MappingQ1<dim> mapping;
@@ -842,49 +854,53 @@ namespace RT_Projection
     const unsigned int n_q_points_face_DG = fe_face_values_DG.get_quadrature().size();
     const unsigned int n_q_points_face_test_scalar = fe_face_values_test_scalar.get_quadrature().size();
 
-    PETScWrappers::MPI::Vector temp_pl_solution;
-
-    PETScWrappers::MPI::Vector temp_Sa_solution_n;
-    PETScWrappers::MPI::Vector temp_Sa_solution_nminus1;
-
-    PETScWrappers::MPI::Vector temp_Sv_solution_n;
-    PETScWrappers::MPI::Vector temp_Sv_solution_nminus1;
-
     PETScWrappers::MPI::Vector temp_kappa;
-
-    temp_pl_solution.reinit(locally_owned_dofs_DG,
-			    locally_relevant_dofs_DG,
-			    mpi_communicator);
-
-    temp_Sa_solution_n.reinit(locally_owned_dofs_DG,
-			      locally_relevant_dofs_DG,
-			      mpi_communicator);
-
-    temp_Sa_solution_nminus1.reinit(locally_owned_dofs_DG,
-				    locally_relevant_dofs_DG,
-				    mpi_communicator);
-
-    temp_Sv_solution_n.reinit(locally_owned_dofs_DG,
-			      locally_relevant_dofs_DG,
-			      mpi_communicator);
-
-    temp_Sv_solution_nminus1.reinit(locally_owned_dofs_DG,
-				    locally_relevant_dofs_DG,
-				    mpi_communicator);
 
     temp_kappa.reinit(locally_owned_dofs_dg0,
 		      locally_relevant_dofs_dg0,
 		      mpi_communicator);
 
-    temp_pl_solution = pl_solution;
-
-    temp_Sa_solution_n = Sa_solution_n;
-    temp_Sa_solution_nminus1 = Sa_solution_nminus1;
-
-    temp_Sv_solution_n = Sv_solution_n;
-    temp_Sv_solution_nminus1 = Sv_solution_nminus1;
-
     temp_kappa = kappa_abs_vec;
+
+	PETScWrappers::MPI::Vector pl_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
+
+	pl_ghosted = pl_solution;
+	pl_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sa_n_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
+
+	Sa_n_ghosted = Sa_solution_n;
+	Sa_n_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sa_nminus1_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
+
+	Sa_nminus1_ghosted = Sa_solution_nminus1;
+	Sa_nminus1_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sv_n_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
+
+	Sv_n_ghosted = Sv_solution_n;
+	Sv_n_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sv_nminus1_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
+
+	Sv_nminus1_ghosted = Sv_solution_nminus1;
+	Sv_nminus1_ghosted.update_ghost_values();
 
     //	std::vecor<int> face_done(GeometryInfo<dim>::)
     for (; cell_DG != endc; ++cell_DG, ++cell_RT0, ++cell_scalar)
@@ -938,23 +954,23 @@ namespace RT_Projection
 
 		if(face->at_boundary())
 		  {
-		    std::vector<double> pl_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_pl_solution, pl_vals_face);
+			  std::vector<double> pl_vals_face(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_values(pl_ghosted, pl_vals_face);
 
-		    std::vector<double> Sa_vals_face_n(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sa_solution_n, Sa_vals_face_n);
+			  std::vector<double> Sa_vals_face_n(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_values(Sa_n_ghosted, Sa_vals_face_n);
 
-		    std::vector<double> Sa_vals_face_nminus1(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sa_solution_nminus1, Sa_vals_face_nminus1);
+			  std::vector<double> Sa_vals_face_nminus1(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_values(Sa_nminus1_ghosted, Sa_vals_face_nminus1);
 
-		    std::vector<double> Sv_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sv_solution_n, Sv_vals_face);
+			  std::vector<double> Sv_vals_face(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_values(Sv_n_ghosted, Sv_vals_face);
 
-		    std::vector<double> Sv_vals_face_nminus1(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sv_solution_nminus1, Sv_vals_face_nminus1);
+			  std::vector<double> Sv_vals_face_nminus1(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_values(Sv_nminus1_ghosted, Sv_vals_face_nminus1);
 
-		    std::vector<Tensor<1, dim>> grad_pl_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_gradients(temp_pl_solution, grad_pl_face);
+			  std::vector<Tensor<1, dim>> grad_pl_face(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_gradients(pl_ghosted, grad_pl_face);
 
 		    double kappa = temp_kappa[cell_DG->global_active_cell_index()];
 
@@ -1093,41 +1109,41 @@ namespace RT_Projection
 
 		    fe_face_values_DG_neighbor.reinit(cell_DG_neighbor, face);
 
-		    std::vector<double> pl_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_pl_solution, pl_vals_face);
+			std::vector<double> pl_vals_face(n_q_points_face_DG);
+			fe_face_values_DG.get_function_values(pl_ghosted, pl_vals_face);
 
-		    std::vector<double> pl_vals_face_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_pl_solution, pl_vals_face_neighbor);
+			std::vector<double> pl_vals_face_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_values(pl_ghosted, pl_vals_face_neighbor);
 
-		    std::vector<double> Sa_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sa_solution_n, Sa_vals_face);
+			std::vector<double> Sa_vals_face(n_q_points_face_DG);
+			fe_face_values_DG.get_function_values(Sa_n_ghosted, Sa_vals_face);
 
-		    std::vector<double> Sa_vals_face_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_Sa_solution_n, Sa_vals_face_neighbor);
+			std::vector<double> Sa_vals_face_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_values(Sa_n_ghosted, Sa_vals_face_neighbor);
 
-		    std::vector<double> Sa_vals_face_nminus1(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sa_solution_nminus1, Sa_vals_face_nminus1);
+			std::vector<double> Sa_vals_face_nminus1(n_q_points_face_DG);
+			fe_face_values_DG.get_function_values(Sa_nminus1_ghosted, Sa_vals_face_nminus1);
 
-		    std::vector<double> Sa_vals_face_nminus1_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_Sa_solution_nminus1, Sa_vals_face_nminus1_neighbor);
+			std::vector<double> Sa_vals_face_nminus1_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_values(Sa_nminus1_ghosted, Sa_vals_face_nminus1_neighbor);
 
-		    std::vector<double> Sv_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sv_solution_n, Sv_vals_face);
+			std::vector<double> Sv_vals_face(n_q_points_face_DG);
+			fe_face_values_DG.get_function_values(Sv_n_ghosted, Sv_vals_face);
 
-		    std::vector<double> Sv_vals_face_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_Sv_solution_n, Sv_vals_face_neighbor);
+			std::vector<double> Sv_vals_face_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_values(Sv_n_ghosted, Sv_vals_face_neighbor);
 
-		    std::vector<double> Sv_vals_face_nminus1(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sv_solution_nminus1, Sv_vals_face_nminus1);
+			std::vector<double> Sv_vals_face_nminus1(n_q_points_face_DG);
+			fe_face_values_DG.get_function_values(Sv_nminus1_ghosted, Sv_vals_face_nminus1);
 
-		    std::vector<double> Sv_vals_face_nminus1_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_Sv_solution_nminus1, Sv_vals_face_nminus1_neighbor);
+			std::vector<double> Sv_vals_face_nminus1_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_values(Sv_nminus1_ghosted, Sv_vals_face_nminus1_neighbor);
 
-		    std::vector<Tensor<1, dim>> grad_pl_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_gradients(temp_pl_solution, grad_pl_face);
+			std::vector<Tensor<1, dim>> grad_pl_face(n_q_points_face_DG);
+			fe_face_values_DG.get_function_gradients(pl_ghosted, grad_pl_face);
 
-		    std::vector<Tensor<1, dim>> grad_pl_face_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_gradients(temp_pl_solution, grad_pl_face_neighbor);
+			std::vector<Tensor<1, dim>> grad_pl_face_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_gradients(pl_ghosted, grad_pl_face_neighbor);
 
 		    double kappa0 = temp_kappa[cell_DG->global_active_cell_index()];
 		    double kappa1 = temp_kappa[cell_DG_neighbor->global_active_cell_index()];
@@ -1339,8 +1355,11 @@ namespace RT_Projection
   PETScWrappers::MPI::Vector compute_RTk_projection(Triangulation<dim, dim> &triangulation, const unsigned int degree, double theta_pl, double time,
 						    double time_step, double penalty_pl, double penalty_pl_bdry, std::vector<unsigned int> dirichlet_id_pl, bool use_exact_pl_in_RT0,
 						    bool use_exact_Sa_in_RT0, bool use_exact_Sv_in_RT0, bool second_order_extrapolation, bool incompressible,
-						    PETScWrappers::MPI::Vector pl_solution, PETScWrappers::MPI::Vector Sa_solution_n, PETScWrappers::MPI::Vector Sa_solution_nminus1,
-						    PETScWrappers::MPI::Vector Sv_solution_n, PETScWrappers::MPI::Vector Sv_solution_nminus1, PETScWrappers::MPI::Vector kappa_abs_vec,
+						    const PETScWrappers::MPI::Vector &pl_solution,
+							const PETScWrappers::MPI::Vector &Sa_solution_n,
+							const PETScWrappers::MPI::Vector &Sa_solution_nminus1,
+						    const PETScWrappers::MPI::Vector &Sv_solution_n,
+							const PETScWrappers::MPI::Vector &Sv_solution_nminus1, PETScWrappers::MPI::Vector kappa_abs_vec,
 						    bool project_only_kappa, MPI_Comm mpi_communicator, const unsigned int n_mpi_processes, const unsigned int this_mpi_process)
   {
     // Testing
@@ -1556,49 +1575,54 @@ namespace RT_Projection
     const unsigned int n_q_points_cell_test_vector = fe_values_test_vector.get_quadrature().size();
     const unsigned int n_q_points_face_test_vector = fe_face_values_test_vector.get_quadrature().size();
 
-    PETScWrappers::MPI::Vector temp_pl_solution;
-
-    PETScWrappers::MPI::Vector temp_Sa_solution_n;
-    PETScWrappers::MPI::Vector temp_Sa_solution_nminus1;
-
-    PETScWrappers::MPI::Vector temp_Sv_solution_n;
-    PETScWrappers::MPI::Vector temp_Sv_solution_nminus1;
-
     PETScWrappers::MPI::Vector temp_kappa;
-
-    temp_pl_solution.reinit(locally_owned_dofs_DG,
-			    locally_relevant_dofs_DG,
-			    mpi_communicator);
-
-    temp_Sa_solution_n.reinit(locally_owned_dofs_DG,
-			      locally_relevant_dofs_DG,
-			      mpi_communicator);
-
-    temp_Sa_solution_nminus1.reinit(locally_owned_dofs_DG,
-				    locally_relevant_dofs_DG,
-				    mpi_communicator);
-
-    temp_Sv_solution_n.reinit(locally_owned_dofs_DG,
-			      locally_relevant_dofs_DG,
-			      mpi_communicator);
-
-    temp_Sv_solution_nminus1.reinit(locally_owned_dofs_DG,
-				    locally_relevant_dofs_DG,
-				    mpi_communicator);
 
     temp_kappa.reinit(locally_owned_dofs_dg0,
 		      locally_relevant_dofs_dg0,
 		      mpi_communicator);
 
-    temp_pl_solution = pl_solution;
-
-    temp_Sa_solution_n = Sa_solution_n;
-    temp_Sa_solution_nminus1 = Sa_solution_nminus1;
-
-    temp_Sv_solution_n = Sv_solution_n;
-    temp_Sv_solution_nminus1 = Sv_solution_nminus1;
-
     temp_kappa = kappa_abs_vec;
+
+	PETScWrappers::MPI::Vector pl_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
+
+	pl_ghosted = pl_solution;
+	pl_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sa_n_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
+
+	Sa_n_ghosted = Sa_solution_n;
+	Sa_n_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sa_nminus1_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
+
+	Sa_nminus1_ghosted = Sa_solution_nminus1;
+	Sa_nminus1_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sv_n_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
+
+	Sv_n_ghosted = Sv_solution_n;
+	Sv_n_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sv_nminus1_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
+
+	Sv_nminus1_ghosted = Sv_solution_nminus1;
+	Sv_nminus1_ghosted.update_ghost_values();
+
 
     //	std::vecor<int> face_done(GeometryInfo<dim>::)
     for (; cell_DG != endc; ++cell_DG, ++cell_RT, ++cell_scalar, ++cell_vector)
@@ -1620,22 +1644,22 @@ namespace RT_Projection
 	    local_solution_RT = 0.0;
 
 	    std::vector<double> pl_vals_cell(n_q_points_DG);
-	    fe_values_DG.get_function_values(temp_pl_solution, pl_vals_cell);
+	    fe_values_DG.get_function_values(pl_ghosted, pl_vals_cell);
 
 	    std::vector<double> Sa_vals_cell_n(n_q_points_DG);
-	    fe_values_DG.get_function_values(temp_Sa_solution_n, Sa_vals_cell_n);
+	    fe_values_DG.get_function_values(Sa_n_ghosted, Sa_vals_cell_n);
 
 	    std::vector<double> Sa_vals_cell_nminus1(n_q_points_DG);
-	    fe_values_DG.get_function_values(temp_Sa_solution_nminus1, Sa_vals_cell_nminus1);
+	    fe_values_DG.get_function_values(Sa_nminus1_ghosted, Sa_vals_cell_nminus1);
 
 	    std::vector<double> Sv_vals_cell_n(n_q_points_DG);
-	    fe_values_DG.get_function_values(temp_Sv_solution_n, Sv_vals_cell_n);
+	    fe_values_DG.get_function_values(Sv_n_ghosted, Sv_vals_cell_n);
 
 	    std::vector<double> Sv_vals_cell_nminus1(n_q_points_DG);
-	    fe_values_DG.get_function_values(temp_Sv_solution_nminus1, Sv_vals_cell_nminus1);
+	    fe_values_DG.get_function_values(Sv_nminus1_ghosted, Sv_vals_cell_nminus1);
 
 	    std::vector<Tensor<1, dim>> grad_pl_cell(n_q_points_DG);
-	    fe_values_DG.get_function_gradients(temp_pl_solution, grad_pl_cell);
+	    fe_values_DG.get_function_gradients(pl_ghosted, grad_pl_cell);
 
 	    double kappa = temp_kappa[cell_DG->global_active_cell_index()];
 
@@ -1779,23 +1803,23 @@ namespace RT_Projection
 
 		if(face->at_boundary())
 		  {
-		    std::vector<double> pl_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_pl_solution, pl_vals_face);
+			  std::vector<double> pl_vals_face(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_values(pl_ghosted, pl_vals_face);
 
-		    std::vector<double> Sa_vals_face_n(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sa_solution_n, Sa_vals_face_n);
+			  std::vector<double> Sa_vals_face_n(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_values(Sa_n_ghosted, Sa_vals_face_n);
 
-		    std::vector<double> Sa_vals_face_nminus1(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sa_solution_nminus1, Sa_vals_face_nminus1);
+			  std::vector<double> Sa_vals_face_nminus1(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_values(Sa_nminus1_ghosted, Sa_vals_face_nminus1);
 
-		    std::vector<double> Sv_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sv_solution_n, Sv_vals_face);
+			  std::vector<double> Sv_vals_face(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_values(Sv_n_ghosted, Sv_vals_face);
 
-		    std::vector<double> Sv_vals_face_nminus1(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sv_solution_nminus1, Sv_vals_face_nminus1);
+			  std::vector<double> Sv_vals_face_nminus1(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_values(Sv_nminus1_ghosted, Sv_vals_face_nminus1);
 
-		    std::vector<Tensor<1, dim>> grad_pl_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_gradients(temp_pl_solution, grad_pl_face);
+			  std::vector<Tensor<1, dim>> grad_pl_face(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_gradients(pl_ghosted, grad_pl_face);
 
 		    double kappa = temp_kappa[cell_DG->global_active_cell_index()];
 
@@ -1943,41 +1967,41 @@ namespace RT_Projection
 
 		    fe_face_values_DG_neighbor.reinit(cell_DG_neighbor, face);
 
-		    std::vector<double> pl_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_pl_solution, pl_vals_face);
+			std::vector<double> pl_vals_face(n_q_points_face_DG);
+			fe_face_values_DG.get_function_values(pl_ghosted, pl_vals_face);
 
-		    std::vector<double> pl_vals_face_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_pl_solution, pl_vals_face_neighbor);
+			std::vector<double> pl_vals_face_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_values(pl_ghosted, pl_vals_face_neighbor);
 
-		    std::vector<double> Sa_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sa_solution_n, Sa_vals_face);
+			std::vector<double> Sa_vals_face(n_q_points_face_DG);
+			fe_face_values_DG.get_function_values(Sa_n_ghosted, Sa_vals_face);
 
-		    std::vector<double> Sa_vals_face_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_Sa_solution_n, Sa_vals_face_neighbor);
+			std::vector<double> Sa_vals_face_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_values(Sa_n_ghosted, Sa_vals_face_neighbor);
 
-		    std::vector<double> Sa_vals_face_nminus1(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sa_solution_nminus1, Sa_vals_face_nminus1);
+			std::vector<double> Sa_vals_face_nminus1(n_q_points_face_DG);
+			fe_face_values_DG.get_function_values(Sa_nminus1_ghosted, Sa_vals_face_nminus1);
 
-		    std::vector<double> Sa_vals_face_nminus1_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_Sa_solution_nminus1, Sa_vals_face_nminus1_neighbor);
+			std::vector<double> Sa_vals_face_nminus1_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_values(Sa_nminus1_ghosted, Sa_vals_face_nminus1_neighbor);
 
-		    std::vector<double> Sv_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sv_solution_n, Sv_vals_face);
+			std::vector<double> Sv_vals_face(n_q_points_face_DG);
+			fe_face_values_DG.get_function_values(Sv_n_ghosted, Sv_vals_face);
 
-		    std::vector<double> Sv_vals_face_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_Sv_solution_n, Sv_vals_face_neighbor);
+			std::vector<double> Sv_vals_face_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_values(Sv_n_ghosted, Sv_vals_face_neighbor);
 
-		    std::vector<double> Sv_vals_face_nminus1(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sv_solution_nminus1, Sv_vals_face_nminus1);
+			std::vector<double> Sv_vals_face_nminus1(n_q_points_face_DG);
+			fe_face_values_DG.get_function_values(Sv_nminus1_ghosted, Sv_vals_face_nminus1);
 
-		    std::vector<double> Sv_vals_face_nminus1_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_Sv_solution_nminus1, Sv_vals_face_nminus1_neighbor);
+			std::vector<double> Sv_vals_face_nminus1_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_values(Sv_nminus1_ghosted, Sv_vals_face_nminus1_neighbor);
 
-		    std::vector<Tensor<1, dim>> grad_pl_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_gradients(temp_pl_solution, grad_pl_face);
+			std::vector<Tensor<1, dim>> grad_pl_face(n_q_points_face_DG);
+			fe_face_values_DG.get_function_gradients(pl_ghosted, grad_pl_face);
 
-		    std::vector<Tensor<1, dim>> grad_pl_face_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_gradients(temp_pl_solution, grad_pl_face_neighbor);
+			std::vector<Tensor<1, dim>> grad_pl_face_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_gradients(pl_ghosted, grad_pl_face_neighbor);
 
 		    double kappa0 = temp_kappa[cell_DG->global_active_cell_index()];
 		    double kappa1 = temp_kappa[cell_DG_neighbor->global_active_cell_index()];
@@ -2180,8 +2204,11 @@ namespace RT_Projection
   PETScWrappers::MPI::Vector compute_RTk_projection_with_gravity(Triangulation<dim, dim> &triangulation, const unsigned int degree, double theta_pl, double time,
 								 double time_step, double penalty_pl, double penalty_pl_bdry, std::vector<unsigned int> dirichlet_id_pl, bool use_exact_pl_in_RT0,
 								 bool use_exact_Sa_in_RT0, bool use_exact_Sv_in_RT0, bool second_order_extrapolation, bool incompressible,
-								 PETScWrappers::MPI::Vector pl_solution, PETScWrappers::MPI::Vector Sa_solution_n, PETScWrappers::MPI::Vector Sa_solution_nminus1,
-								 PETScWrappers::MPI::Vector Sv_solution_n, PETScWrappers::MPI::Vector Sv_solution_nminus1, PETScWrappers::MPI::Vector kappa_abs_vec,
+								 const PETScWrappers::MPI::Vector &pl_solution,
+								 const PETScWrappers::MPI::Vector &Sa_solution_n,
+								 const PETScWrappers::MPI::Vector &Sa_solution_nminus1,
+								 const PETScWrappers::MPI::Vector &Sv_solution_n,
+								 const PETScWrappers::MPI::Vector &Sv_solution_nminus1, PETScWrappers::MPI::Vector kappa_abs_vec,
 								 bool use_Sa, bool project_only_kappa, MPI_Comm mpi_communicator, const unsigned int n_mpi_processes, const unsigned int this_mpi_process)
   {
     FE_DGQ<dim>     fe(degree);
@@ -2404,49 +2431,53 @@ namespace RT_Projection
     const unsigned int n_q_points_cell_test_vector = fe_values_test_vector.get_quadrature().size();
     const unsigned int n_q_points_face_test_vector = fe_face_values_test_vector.get_quadrature().size();
 
-    PETScWrappers::MPI::Vector temp_pl_solution;
-
-    PETScWrappers::MPI::Vector temp_Sa_solution_n;
-    PETScWrappers::MPI::Vector temp_Sa_solution_nminus1;
-
-    PETScWrappers::MPI::Vector temp_Sv_solution_n;
-    PETScWrappers::MPI::Vector temp_Sv_solution_nminus1;
-
     PETScWrappers::MPI::Vector temp_kappa;
-
-    temp_pl_solution.reinit(locally_owned_dofs_DG,
-			    locally_relevant_dofs_DG,
-			    mpi_communicator);
-
-    temp_Sa_solution_n.reinit(locally_owned_dofs_DG,
-			      locally_relevant_dofs_DG,
-			      mpi_communicator);
-
-    temp_Sa_solution_nminus1.reinit(locally_owned_dofs_DG,
-				    locally_relevant_dofs_DG,
-				    mpi_communicator);
-
-    temp_Sv_solution_n.reinit(locally_owned_dofs_DG,
-			      locally_relevant_dofs_DG,
-			      mpi_communicator);
-
-    temp_Sv_solution_nminus1.reinit(locally_owned_dofs_DG,
-				    locally_relevant_dofs_DG,
-				    mpi_communicator);
 
     temp_kappa.reinit(locally_owned_dofs_dg0,
 		      locally_relevant_dofs_dg0,
 		      mpi_communicator);
 
-    temp_pl_solution = pl_solution;
-
-    temp_Sa_solution_n = Sa_solution_n;
-    temp_Sa_solution_nminus1 = Sa_solution_nminus1;
-
-    temp_Sv_solution_n = Sv_solution_n;
-    temp_Sv_solution_nminus1 = Sv_solution_nminus1;
-
     temp_kappa = kappa_abs_vec;
+
+	PETScWrappers::MPI::Vector pl_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
+
+	pl_ghosted = pl_solution;
+	pl_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sa_n_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
+
+	Sa_n_ghosted = Sa_solution_n;
+	Sa_n_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sa_nminus1_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
+
+	Sa_nminus1_ghosted = Sa_solution_nminus1;
+	Sa_nminus1_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sv_n_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
+
+	Sv_n_ghosted = Sv_solution_n;
+	Sv_n_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sv_nminus1_ghosted(
+		locally_owned_dofs_DG,
+		locally_relevant_dofs_DG,
+		mpi_communicator);
+
+	Sv_nminus1_ghosted = Sv_solution_nminus1;
+	Sv_nminus1_ghosted.update_ghost_values();
 
     //	std::vecor<int> face_done(GeometryInfo<dim>::)
     for (; cell_DG != endc; ++cell_DG, ++cell_RT, ++cell_scalar, ++cell_vector)
@@ -2464,22 +2495,22 @@ namespace RT_Projection
 	    local_solution_RT = 0.0;
 
 	    std::vector<double> pl_vals_cell(n_q_points_DG);
-	    fe_values_DG.get_function_values(temp_pl_solution, pl_vals_cell);
+	    fe_values_DG.get_function_values(pl_ghosted, pl_vals_cell);
 
 	    std::vector<double> Sa_vals_cell_n(n_q_points_DG);
-	    fe_values_DG.get_function_values(temp_Sa_solution_n, Sa_vals_cell_n);
+	    fe_values_DG.get_function_values(Sa_n_ghosted, Sa_vals_cell_n);
 
 	    std::vector<double> Sa_vals_cell_nminus1(n_q_points_DG);
-	    fe_values_DG.get_function_values(temp_Sa_solution_nminus1, Sa_vals_cell_nminus1);
+	    fe_values_DG.get_function_values(Sa_nminus1_ghosted, Sa_vals_cell_nminus1);
 
 	    std::vector<double> Sv_vals_cell_n(n_q_points_DG);
-	    fe_values_DG.get_function_values(temp_Sv_solution_n, Sv_vals_cell_n);
+	    fe_values_DG.get_function_values(Sv_n_ghosted, Sv_vals_cell_n);
 
 	    std::vector<double> Sv_vals_cell_nminus1(n_q_points_DG);
-	    fe_values_DG.get_function_values(temp_Sv_solution_nminus1, Sv_vals_cell_nminus1);
+	    fe_values_DG.get_function_values(Sv_nminus1_ghosted, Sv_vals_cell_nminus1);
 
 	    std::vector<Tensor<1, dim>> grad_pl_cell(n_q_points_DG);
-	    fe_values_DG.get_function_gradients(temp_pl_solution, grad_pl_cell);
+	    fe_values_DG.get_function_gradients(pl_ghosted, grad_pl_cell);
 
 	    double kappa = temp_kappa[cell_DG->global_active_cell_index()];
 
@@ -2625,23 +2656,23 @@ namespace RT_Projection
 
 		if(face->at_boundary())
 		  {
-		    std::vector<double> pl_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_pl_solution, pl_vals_face);
+			  std::vector<double> pl_vals_face(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_values(pl_ghosted, pl_vals_face);
 
-		    std::vector<double> Sa_vals_face_n(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sa_solution_n, Sa_vals_face_n);
+			  std::vector<double> Sa_vals_face_n(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_values(Sa_n_ghosted, Sa_vals_face_n);
 
-		    std::vector<double> Sa_vals_face_nminus1(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sa_solution_nminus1, Sa_vals_face_nminus1);
+			  std::vector<double> Sa_vals_face_nminus1(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_values(Sa_nminus1_ghosted, Sa_vals_face_nminus1);
 
-		    std::vector<double> Sv_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sv_solution_n, Sv_vals_face);
+			  std::vector<double> Sv_vals_face(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_values(Sv_n_ghosted, Sv_vals_face);
 
-		    std::vector<double> Sv_vals_face_nminus1(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sv_solution_nminus1, Sv_vals_face_nminus1);
+			  std::vector<double> Sv_vals_face_nminus1(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_values(Sv_nminus1_ghosted, Sv_vals_face_nminus1);
 
-		    std::vector<Tensor<1, dim>> grad_pl_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_gradients(temp_pl_solution, grad_pl_face);
+			  std::vector<Tensor<1, dim>> grad_pl_face(n_q_points_face_DG);
+			  fe_face_values_DG.get_function_gradients(pl_ghosted, grad_pl_face);
 
 		    double kappa = temp_kappa[cell_DG->global_active_cell_index()];
 
@@ -2795,41 +2826,41 @@ namespace RT_Projection
 
 		    fe_face_values_DG_neighbor.reinit(cell_DG_neighbor, face);
 
-		    std::vector<double> pl_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_pl_solution, pl_vals_face);
+			std::vector<double> pl_vals_face(n_q_points_face_DG);
+			fe_face_values_DG.get_function_values(pl_ghosted, pl_vals_face);
 
-		    std::vector<double> pl_vals_face_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_pl_solution, pl_vals_face_neighbor);
+			std::vector<double> pl_vals_face_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_values(pl_ghosted, pl_vals_face_neighbor);
 
-		    std::vector<double> Sa_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sa_solution_n, Sa_vals_face);
+			std::vector<double> Sa_vals_face(n_q_points_face_DG);
+			fe_face_values_DG.get_function_values(Sa_n_ghosted, Sa_vals_face);
 
-		    std::vector<double> Sa_vals_face_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_Sa_solution_n, Sa_vals_face_neighbor);
+			std::vector<double> Sa_vals_face_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_values(Sa_n_ghosted, Sa_vals_face_neighbor);
 
-		    std::vector<double> Sa_vals_face_nminus1(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sa_solution_nminus1, Sa_vals_face_nminus1);
+			std::vector<double> Sa_vals_face_nminus1(n_q_points_face_DG);
+			fe_face_values_DG.get_function_values(Sa_nminus1_ghosted, Sa_vals_face_nminus1);
 
-		    std::vector<double> Sa_vals_face_nminus1_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_Sa_solution_nminus1, Sa_vals_face_nminus1_neighbor);
+			std::vector<double> Sa_vals_face_nminus1_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_values(Sa_nminus1_ghosted, Sa_vals_face_nminus1_neighbor);
 
-		    std::vector<double> Sv_vals_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sv_solution_n, Sv_vals_face);
+			std::vector<double> Sv_vals_face(n_q_points_face_DG);
+			fe_face_values_DG.get_function_values(Sv_n_ghosted, Sv_vals_face);
 
-		    std::vector<double> Sv_vals_face_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_Sv_solution_n, Sv_vals_face_neighbor);
+			std::vector<double> Sv_vals_face_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_values(Sv_n_ghosted, Sv_vals_face_neighbor);
 
-		    std::vector<double> Sv_vals_face_nminus1(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_values(temp_Sv_solution_nminus1, Sv_vals_face_nminus1);
+			std::vector<double> Sv_vals_face_nminus1(n_q_points_face_DG);
+			fe_face_values_DG.get_function_values(Sv_nminus1_ghosted, Sv_vals_face_nminus1);
 
-		    std::vector<double> Sv_vals_face_nminus1_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_values(temp_Sv_solution_nminus1, Sv_vals_face_nminus1_neighbor);
+			std::vector<double> Sv_vals_face_nminus1_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_values(Sv_nminus1_ghosted, Sv_vals_face_nminus1_neighbor);
 
-		    std::vector<Tensor<1, dim>> grad_pl_face(n_q_points_face_DG);
-		    fe_face_values_DG.get_function_gradients(temp_pl_solution, grad_pl_face);
+			std::vector<Tensor<1, dim>> grad_pl_face(n_q_points_face_DG);
+			fe_face_values_DG.get_function_gradients(pl_ghosted, grad_pl_face);
 
-		    std::vector<Tensor<1, dim>> grad_pl_face_neighbor(n_q_points_face_DG);
-		    fe_face_values_DG_neighbor.get_function_gradients(temp_pl_solution, grad_pl_face_neighbor);
+			std::vector<Tensor<1, dim>> grad_pl_face_neighbor(n_q_points_face_DG);
+			fe_face_values_DG_neighbor.get_function_gradients(pl_ghosted, grad_pl_face_neighbor);
 
 		    double kappa0 = temp_kappa[cell_DG->global_active_cell_index()];
 		    double kappa1 = temp_kappa[cell_DG_neighbor->global_active_cell_index()];

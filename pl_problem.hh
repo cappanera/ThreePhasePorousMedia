@@ -104,11 +104,15 @@ namespace LiquidPressure
 
     void setup_system();
 
-    void assemble_system_matrix_pressure(double time_step_, double time_,unsigned int timestep_number_,bool rebuild_matrix_,PETScWrappers::MPI::Vector pl_solution_n_,
-					 PETScWrappers::MPI::Vector pl_solution_nminus1_, PETScWrappers::MPI::Vector pl_solution_nminus2_,
-					 PETScWrappers::MPI::Vector Sa_solution_n_,		PETScWrappers::MPI::Vector Sa_solution_nminus1_,
-					 PETScWrappers::MPI::Vector Sa_solution_nminus2_,PETScWrappers::MPI::Vector Sv_solution_n_,
-					 PETScWrappers::MPI::Vector Sv_solution_nminus1_,PETScWrappers::MPI::Vector Sv_solution_nminus2_);
+    void assemble_system_matrix_pressure(double time_step_, double time_,unsigned int timestep_number_,bool rebuild_matrix_, const PETScWrappers::MPI::Vector &pl_solution_n_,
+					 const PETScWrappers::MPI::Vector &pl_solution_nminus1_,
+					 const PETScWrappers::MPI::Vector &pl_solution_nminus2_,
+					 const PETScWrappers::MPI::Vector &Sa_solution_n_,
+					 const PETScWrappers::MPI::Vector &Sa_solution_nminus1_,
+					 const PETScWrappers::MPI::Vector &Sa_solution_nminus2_,
+					 const PETScWrappers::MPI::Vector &Sv_solution_n_,
+					 const PETScWrappers::MPI::Vector &Sv_solution_nminus1_,
+					 const PETScWrappers::MPI::Vector &Sv_solution_nminus2_);
     void solve_pressure();
 
     PETScWrappers::MPI::Vector pl_solution;
@@ -139,18 +143,6 @@ namespace LiquidPressure
 
     PETScWrappers::MPI::SparseMatrix system_matrix_pressure;
     PETScWrappers::MPI::Vector right_hand_side_pressure;
-
-    PETScWrappers::MPI::Vector pl_solution_n;
-    PETScWrappers::MPI::Vector pl_solution_nminus1;
-    PETScWrappers::MPI::Vector pl_solution_nminus2;
-
-    PETScWrappers::MPI::Vector Sa_solution_n;
-    PETScWrappers::MPI::Vector Sa_solution_nminus1;
-    PETScWrappers::MPI::Vector Sa_solution_nminus2;
-
-    PETScWrappers::MPI::Vector Sv_solution_n;
-    PETScWrappers::MPI::Vector Sv_solution_nminus1;
-    PETScWrappers::MPI::Vector Sv_solution_nminus2;
 
     FE_DGQ<dim> fe_dg0;
     DoFHandler<dim> dof_handler_dg0;
@@ -253,15 +245,15 @@ namespace LiquidPressure
 
   template <int dim>
   void LiquidPressureProblem<dim>::assemble_system_matrix_pressure(double time_step_, double time_, unsigned int timestep_number_,bool rebuild_matrix_,
-								   PETScWrappers::MPI::Vector pl_solution_n_,
-								   PETScWrappers::MPI::Vector pl_solution_nminus1_,
-								   PETScWrappers::MPI::Vector pl_solution_nminus2_,
-								   PETScWrappers::MPI::Vector Sa_solution_n_,
-								   PETScWrappers::MPI::Vector Sa_solution_nminus1_,
-								   PETScWrappers::MPI::Vector Sa_solution_nminus2_,
-								   PETScWrappers::MPI::Vector Sv_solution_n_,
-								   PETScWrappers::MPI::Vector Sv_solution_nminus1_,
-								   PETScWrappers::MPI::Vector Sv_solution_nminus2_)
+								   const PETScWrappers::MPI::Vector &pl_solution_n_,
+								   const PETScWrappers::MPI::Vector &pl_solution_nminus1_,
+								   const PETScWrappers::MPI::Vector &pl_solution_nminus2_,
+								   const PETScWrappers::MPI::Vector &Sa_solution_n_,
+								   const PETScWrappers::MPI::Vector &Sa_solution_nminus1_,
+								   const PETScWrappers::MPI::Vector &Sa_solution_nminus2_,
+								   const PETScWrappers::MPI::Vector &Sv_solution_n_,
+								   const PETScWrappers::MPI::Vector &Sv_solution_nminus1_,
+								   const PETScWrappers::MPI::Vector &Sv_solution_nminus2_)
   {
     rebuild_matrix = rebuild_matrix_;
 
@@ -318,74 +310,85 @@ namespace LiquidPressure
     // Neumann term
     NeumannTermLiquidPressure<dim> neumann_fcn;
 
-    // Solutions on this processor
-    PETScWrappers::MPI::Vector temp_pl_solution_n;
-    PETScWrappers::MPI::Vector temp_pl_solution_nminus1;
-    PETScWrappers::MPI::Vector temp_pl_solution_nminus2;
-
-    PETScWrappers::MPI::Vector temp_Sa_solution_n;
-    PETScWrappers::MPI::Vector temp_Sa_solution_nminus1;
-    PETScWrappers::MPI::Vector temp_Sa_solution_nminus2;
-
-    PETScWrappers::MPI::Vector temp_Sv_solution_n;
-    PETScWrappers::MPI::Vector temp_Sv_solution_nminus1;
-    PETScWrappers::MPI::Vector temp_Sv_solution_nminus2;
-
     PETScWrappers::MPI::Vector temp_kappa;
-
-    temp_pl_solution_n.reinit(locally_owned_dofs,
-			      locally_relevant_dofs,
-			      mpi_communicator);
-
-    temp_pl_solution_nminus1.reinit(locally_owned_dofs,
-				    locally_relevant_dofs,
-				    mpi_communicator);
-
-    temp_pl_solution_nminus2.reinit(locally_owned_dofs,
-				    locally_relevant_dofs,
-				    mpi_communicator);
-
-    temp_Sa_solution_n.reinit(locally_owned_dofs,
-			      locally_relevant_dofs,
-			      mpi_communicator);
-
-    temp_Sa_solution_nminus1.reinit(locally_owned_dofs,
-				    locally_relevant_dofs,
-				    mpi_communicator);
-
-    temp_Sa_solution_nminus2.reinit(locally_owned_dofs,
-				    locally_relevant_dofs,
-				    mpi_communicator);
-
-    temp_Sv_solution_n.reinit(locally_owned_dofs,
-			      locally_relevant_dofs,
-			      mpi_communicator);
-
-    temp_Sv_solution_nminus1.reinit(locally_owned_dofs,
-				    locally_relevant_dofs,
-				    mpi_communicator);
-
-    temp_Sv_solution_nminus2.reinit(locally_owned_dofs,
-				    locally_relevant_dofs,
-				    mpi_communicator);
 
     temp_kappa.reinit(locally_owned_dofs_dg0,
 		      locally_relevant_dofs_dg0,
 		      mpi_communicator);
 
-    temp_pl_solution_n = pl_solution_n_;
-    temp_pl_solution_nminus1 = pl_solution_nminus1_;
-    temp_pl_solution_nminus2 = pl_solution_nminus2_;
-
-    temp_Sa_solution_n = Sa_solution_n_;
-    temp_Sa_solution_nminus1 = Sa_solution_nminus1_;
-    temp_Sa_solution_nminus2 = Sa_solution_nminus2_;
-
-    temp_Sv_solution_n = Sv_solution_n_;
-    temp_Sv_solution_nminus1 = Sv_solution_nminus1_;
-    temp_Sv_solution_nminus2 = Sv_solution_nminus2_;
-
     temp_kappa = kappa_abs_vec;
+
+	PETScWrappers::MPI::Vector pl_n_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	pl_n_ghosted = pl_solution_n_;
+	pl_n_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector pl_nminus1_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	pl_nminus1_ghosted = pl_solution_nminus1_;
+	pl_nminus1_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector pl_nminus2_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	pl_nminus2_ghosted = pl_solution_nminus2_;
+	pl_nminus2_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sa_n_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	Sa_n_ghosted = Sa_solution_n_;
+	Sa_n_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sa_nminus1_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	Sa_nminus1_ghosted = Sa_solution_nminus1_;
+	Sa_nminus1_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sa_nminus2_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	Sa_nminus2_ghosted = Sa_solution_nminus2_;
+	Sa_nminus2_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sv_n_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	Sv_n_ghosted = Sv_solution_n_;
+	Sv_n_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sv_nminus1_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	Sv_nminus1_ghosted = Sv_solution_nminus1_;
+	Sv_nminus1_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sv_nminus2_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	Sv_nminus2_ghosted = Sv_solution_nminus2_;
+	Sv_nminus2_ghosted.update_ghost_values();
 
     // This is the function that will be executed for each cell. Contains element integrals
     const auto cell_worker = [&](const typename DoFHandler<dim>::active_cell_iterator &cell,
@@ -431,23 +434,23 @@ namespace LiquidPressure
       std::vector<Tensor<1, dim>> old_Sv_grads_nminus1(n_qpoints);
 
       // Obtain values of previous time solutions at integration points
-      fe_v.get_function_values(temp_pl_solution_n, old_pl_vals);
-      fe_v.get_function_values(temp_pl_solution_nminus1, old_pl_vals_nminus1);
-      fe_v.get_function_values(temp_pl_solution_nminus2, old_pl_vals_nminus2);
-      fe_v.get_function_gradients(temp_pl_solution_n, old_pl_grads);
-      fe_v.get_function_gradients(temp_pl_solution_nminus1, old_pl_grads_nminus1);
+      fe_v.get_function_values(pl_n_ghosted, old_pl_vals);
+      fe_v.get_function_values(pl_nminus1_ghosted, old_pl_vals_nminus1);
+      fe_v.get_function_values(pl_nminus2_ghosted, old_pl_vals_nminus2);
+      fe_v.get_function_gradients(pl_n_ghosted, old_pl_grads);
+      fe_v.get_function_gradients(pl_nminus1_ghosted, old_pl_grads_nminus1);
 
-      fe_v.get_function_values(temp_Sa_solution_n, old_Sa_vals);
-      fe_v.get_function_values(temp_Sa_solution_nminus1, old_Sa_vals_nminus1);
-      fe_v.get_function_values(temp_Sa_solution_nminus2, old_Sa_vals_nminus2);
-      fe_v.get_function_gradients(temp_Sa_solution_n, old_Sa_grads);
-      fe_v.get_function_gradients(temp_Sa_solution_nminus1, old_Sa_grads_nminus1);
+      fe_v.get_function_values(Sa_n_ghosted, old_Sa_vals);
+      fe_v.get_function_values(Sa_nminus1_ghosted, old_Sa_vals_nminus1);
+      fe_v.get_function_values(Sa_nminus2_ghosted, old_Sa_vals_nminus2);
+      fe_v.get_function_gradients(Sa_n_ghosted, old_Sa_grads);
+      fe_v.get_function_gradients(Sa_nminus1_ghosted, old_Sa_grads_nminus1);
 
-      fe_v.get_function_values(temp_Sv_solution_n, old_Sv_vals);
-      fe_v.get_function_values(temp_Sv_solution_nminus1, old_Sv_vals_nminus1);
-      fe_v.get_function_values(temp_Sv_solution_nminus2, old_Sv_vals_nminus2);
-      fe_v.get_function_gradients(temp_Sv_solution_n, old_Sv_grads);
-      fe_v.get_function_gradients(temp_Sv_solution_nminus1, old_Sv_grads_nminus1);
+      fe_v.get_function_values(Sv_n_ghosted, old_Sv_vals);
+      fe_v.get_function_values(Sv_nminus1_ghosted, old_Sv_vals_nminus1);
+      fe_v.get_function_values(Sv_nminus2_ghosted, old_Sv_vals_nminus2);
+      fe_v.get_function_gradients(Sv_n_ghosted, old_Sv_grads);
+      fe_v.get_function_gradients(Sv_nminus1_ghosted, old_Sv_grads_nminus1);
 
       double kappa = temp_kappa[cell->global_active_cell_index()];
 
@@ -777,20 +780,20 @@ namespace LiquidPressure
       std::vector<Tensor<1, dim>> old_Sv_grads(n_qpoints);
       std::vector<Tensor<1, dim>> old_Sv_grads_nminus1(n_qpoints);
 
-      fe_face.get_function_values(temp_pl_solution_n, old_pl_vals);
-      fe_face.get_function_values(temp_pl_solution_nminus1, old_pl_vals_nminus1);
-      fe_face.get_function_gradients(temp_pl_solution_n, old_pl_grads);
-      fe_face.get_function_gradients(temp_pl_solution_nminus1, old_pl_grads_nminus1);
+      fe_face.get_function_values(pl_n_ghosted, old_pl_vals);
+      fe_face.get_function_values(pl_nminus1_ghosted, old_pl_vals_nminus1);
+      fe_face.get_function_gradients(pl_n_ghosted, old_pl_grads);
+      fe_face.get_function_gradients(pl_nminus1_ghosted, old_pl_grads_nminus1);
 
-      fe_face.get_function_values(temp_Sa_solution_n, old_Sa_vals);
-      fe_face.get_function_values(temp_Sa_solution_nminus1, old_Sa_vals_nminus1);
-      fe_face.get_function_gradients(temp_Sa_solution_n, old_Sa_grads);
-      fe_face.get_function_gradients(temp_Sa_solution_nminus1, old_Sa_grads_nminus1);
+      fe_face.get_function_values(Sa_n_ghosted, old_Sa_vals);
+      fe_face.get_function_values(Sa_nminus1_ghosted, old_Sa_vals_nminus1);
+      fe_face.get_function_gradients(Sa_n_ghosted, old_Sa_grads);
+      fe_face.get_function_gradients(Sa_nminus1_ghosted, old_Sa_grads_nminus1);
 
-      fe_face.get_function_values(temp_Sv_solution_n, old_Sv_vals);
-      fe_face.get_function_values(temp_Sv_solution_nminus1, old_Sv_vals_nminus1);
-      fe_face.get_function_gradients(temp_Sv_solution_n, old_Sv_grads);
-      fe_face.get_function_gradients(temp_Sv_solution_nminus1, old_Sv_grads_nminus1);
+      fe_face.get_function_values(Sv_n_ghosted, old_Sv_vals);
+      fe_face.get_function_values(Sv_nminus1_ghosted, old_Sv_vals_nminus1);
+      fe_face.get_function_gradients(Sv_n_ghosted, old_Sv_grads);
+      fe_face.get_function_gradients(Sv_nminus1_ghosted, old_Sv_grads_nminus1);
 
       double kappa = temp_kappa[cell->global_active_cell_index()];
 
@@ -1188,41 +1191,41 @@ namespace LiquidPressure
       std::vector<Tensor<1, dim>> old_Sv_grads_nminus1(n_qpoints);
       std::vector<Tensor<1, dim>> old_Sv_grads_neighbor_nminus1(n_qpoints);
 
-      fe_face.get_function_values(temp_pl_solution_n, old_pl_vals);
-      fe_face_neighbor.get_function_values(temp_pl_solution_n, old_pl_vals_neighbor);
+      fe_face.get_function_values(pl_n_ghosted, old_pl_vals);
+      fe_face_neighbor.get_function_values(pl_n_ghosted, old_pl_vals_neighbor);
 
-      fe_face.get_function_values(temp_pl_solution_nminus1, old_pl_vals_nminus1);
-      fe_face_neighbor.get_function_values(temp_pl_solution_nminus1, old_pl_vals_neighbor_nminus1);
+      fe_face.get_function_values(pl_nminus1_ghosted, old_pl_vals_nminus1);
+      fe_face_neighbor.get_function_values(pl_nminus1_ghosted, old_pl_vals_neighbor_nminus1);
 
-      fe_face.get_function_gradients(temp_pl_solution_n, old_pl_grads);
-      fe_face_neighbor.get_function_gradients(temp_pl_solution_n, old_pl_grads_neighbor);
+      fe_face.get_function_gradients(pl_n_ghosted, old_pl_grads);
+      fe_face_neighbor.get_function_gradients(pl_n_ghosted, old_pl_grads_neighbor);
 
-      fe_face.get_function_gradients(temp_pl_solution_nminus1, old_pl_grads_nminus1);
-      fe_face_neighbor.get_function_gradients(temp_pl_solution_nminus1, old_pl_grads_neighbor_nminus1);
+      fe_face.get_function_gradients(pl_nminus1_ghosted, old_pl_grads_nminus1);
+      fe_face_neighbor.get_function_gradients(pl_nminus1_ghosted, old_pl_grads_neighbor_nminus1);
 
-      fe_face.get_function_values(temp_Sa_solution_n, old_Sa_vals);
-      fe_face_neighbor.get_function_values(temp_Sa_solution_n, old_Sa_vals_neighbor);
+      fe_face.get_function_values(Sa_n_ghosted, old_Sa_vals);
+      fe_face_neighbor.get_function_values(Sa_n_ghosted, old_Sa_vals_neighbor);
 
-      fe_face.get_function_gradients(temp_Sa_solution_n, old_Sa_grads);
-      fe_face_neighbor.get_function_gradients(temp_Sa_solution_n, old_Sa_grads_neighbor);
+      fe_face.get_function_gradients(Sa_n_ghosted, old_Sa_grads);
+      fe_face_neighbor.get_function_gradients(Sa_n_ghosted, old_Sa_grads_neighbor);
 
-      fe_face.get_function_values(temp_Sv_solution_n, old_Sv_vals);
-      fe_face_neighbor.get_function_values(temp_Sv_solution_n, old_Sv_vals_neighbor);
+      fe_face.get_function_values(Sv_n_ghosted, old_Sv_vals);
+      fe_face_neighbor.get_function_values(Sv_n_ghosted, old_Sv_vals_neighbor);
 
-      fe_face.get_function_gradients(temp_Sv_solution_n, old_Sv_grads);
-      fe_face_neighbor.get_function_gradients(temp_Sv_solution_n, old_Sv_grads_neighbor);
+      fe_face.get_function_gradients(Sv_n_ghosted, old_Sv_grads);
+      fe_face_neighbor.get_function_gradients(Sv_n_ghosted, old_Sv_grads_neighbor);
 
-      fe_face.get_function_values(temp_Sa_solution_nminus1, old_Sa_vals_nminus1);
-      fe_face_neighbor.get_function_values(temp_Sa_solution_nminus1, old_Sa_vals_neighbor_nminus1);
+      fe_face.get_function_values(Sa_nminus1_ghosted, old_Sa_vals_nminus1);
+      fe_face_neighbor.get_function_values(Sa_nminus1_ghosted, old_Sa_vals_neighbor_nminus1);
 
-      fe_face.get_function_gradients(temp_Sa_solution_nminus1, old_Sa_grads_nminus1);
-      fe_face_neighbor.get_function_gradients(temp_Sa_solution_nminus1, old_Sa_grads_neighbor_nminus1);
+      fe_face.get_function_gradients(Sa_nminus1_ghosted, old_Sa_grads_nminus1);
+      fe_face_neighbor.get_function_gradients(Sa_nminus1_ghosted, old_Sa_grads_neighbor_nminus1);
 
-      fe_face.get_function_values(temp_Sv_solution_nminus1, old_Sv_vals_nminus1);
-      fe_face_neighbor.get_function_values(temp_Sv_solution_nminus1, old_Sv_vals_neighbor_nminus1);
+      fe_face.get_function_values(Sv_nminus1_ghosted, old_Sv_vals_nminus1);
+      fe_face_neighbor.get_function_values(Sv_nminus1_ghosted, old_Sv_vals_neighbor_nminus1);
 
-      fe_face.get_function_gradients(temp_Sv_solution_nminus1, old_Sv_grads_nminus1);
-      fe_face_neighbor.get_function_gradients(temp_Sv_solution_nminus1, old_Sv_grads_neighbor_nminus1);
+      fe_face.get_function_gradients(Sv_nminus1_ghosted, old_Sv_grads_nminus1);
+      fe_face_neighbor.get_function_gradients(Sv_nminus1_ghosted, old_Sv_grads_neighbor_nminus1);
 
       double kappa0 = temp_kappa[cell->global_active_cell_index()];
       double kappa1 = temp_kappa[ncell->global_active_cell_index()];
@@ -1440,6 +1443,16 @@ namespace LiquidPressure
 	  double h_e = cell->face(f)->measure();
 	  double penalty_factor = (penalty_pl/h_e) * gamma_pl_e * degree*(degree + dim - 1);
 
+	  std::vector<double> weighted_averages_stab(n_dofs);
+	  std::vector<double> weighted_averages(n_dofs);
+
+	  for (unsigned int i = 0; i < n_dofs; i++)
+	  {
+		  weighted_averages_stab[i] = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf, nsf, fe_iv, normals[point], i, point, coef0_diff_stab, coef1_diff_stab, weight0_diff_stab, weight1_diff_stab);
+
+		  weighted_averages[i] = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf, nsf, fe_iv, normals[point], i, point, coef0_diff, coef1_diff, weight0_diff, weight1_diff);
+	  }
+
 	  for (unsigned int i = 0; i < n_dofs; ++i)
 	    {
 	      if(rebuild_matrix)
@@ -1449,56 +1462,29 @@ namespace LiquidPressure
 		      // Interior face terms from diffusion
 		      if(Stab_pl)
 			{
-			  double weighted_aver_j_stab = AverageGradOperators::weighted_average_gradient(cell, f, sf, ncell, nf,
-													nsf, fe_iv,
-													normals[point],
-													j, point,
-													coef0_diff_stab, coef1_diff_stab,
-													weight0_diff_stab, weight1_diff_stab);
-
 			  copy_data_face.cell_matrix(i, j) -=
 			    fe_iv.jump_in_shape_values(i, point)
-			    * weighted_aver_j_stab
+			    * weighted_averages_stab[j]
 			    * JxW[point];
-
-			  double weighted_aver_i_stab = AverageGradOperators::weighted_average_gradient(cell, f, sf, ncell, nf,
-													nsf, fe_iv,
-													normals[point],
-													i, point,
-													coef0_diff_stab, coef1_diff_stab,
-													weight0_diff_stab, weight1_diff_stab);
 
 			  copy_data_face.cell_matrix(i, j) +=
 			    theta_pl
 			    * fe_iv.jump_in_shape_values(j, point)
-			    * weighted_aver_i_stab
+			    * weighted_averages_stab[i]
 			    * JxW[point];
 			}
 		      else
 			{
-			  double weighted_aver_j = AverageGradOperators::weighted_average_gradient(cell, f, sf, ncell, nf,
-												   nsf, fe_iv,
-												   normals[point],
-												   j, point,
-												   coef0_diff, coef1_diff,
-												   weight0_diff, weight1_diff);
 
 			  copy_data_face.cell_matrix(i, j) +=
 			    - fe_iv.jump_in_shape_values(i, point)
-			    * weighted_aver_j
+			    * weighted_averages[j]
 			    * JxW[point];
-
-			  double weighted_aver_i = AverageGradOperators::weighted_average_gradient(cell, f, sf, ncell, nf,
-												   nsf, fe_iv,
-												   normals[point],
-												   i, point,
-												   coef0_diff, coef1_diff,
-												   weight0_diff, weight1_diff);
 
 			  copy_data_face.cell_matrix(i, j) +=
 			    theta_pl
 			    * fe_iv.jump_in_shape_values(j, point)
-			    * weighted_aver_i
+			    * weighted_averages[i]
 			    * JxW[point];
 			}
 

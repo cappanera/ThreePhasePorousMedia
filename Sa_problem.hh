@@ -163,13 +163,13 @@ namespace AqueousSaturation
     void assemble_system_matrix_aqueous_saturation(double time_step_,double time_,
 						   unsigned int timestep_number_,
 						   bool rebuild_matrix_,
-						   PETScWrappers::MPI::Vector pl_solution_, PETScWrappers::MPI::Vector pl_solution_n_,
-						   PETScWrappers::MPI::Vector pl_solution_nminus1_,
-						   PETScWrappers::MPI::Vector Sa_solution_n_, PETScWrappers::MPI::Vector Sa_solution_nminus1_,
-						   PETScWrappers::MPI::Vector Sv_solution_n_, PETScWrappers::MPI::Vector Sv_solution_nminus1_,
-						   PETScWrappers::MPI::Vector totalDarcyvelocity_RT_);
+						   const PETScWrappers::MPI::Vector &pl_solution_, const PETScWrappers::MPI::Vector &pl_solution_n_,
+						   const PETScWrappers::MPI::Vector &pl_solution_nminus1_,
+						   const PETScWrappers::MPI::Vector &Sa_solution_n_, const PETScWrappers::MPI::Vector &Sa_solution_nminus1_,
+						   const PETScWrappers::MPI::Vector &Sv_solution_n_, const PETScWrappers::MPI::Vector &Sv_solution_nminus1_,
+						   const PETScWrappers::MPI::Vector &totalDarcyVelocity_RT_);
 
-    void solve_aqueous_saturation(PETScWrappers::MPI::Vector pl_solution_);
+    void solve_aqueous_saturation();
 
     PETScWrappers::MPI::Vector Sa_solution;
   private:
@@ -204,16 +204,6 @@ namespace AqueousSaturation
     PETScWrappers::MPI::SparseMatrix system_matrix_aqueous_saturation;
     PETScWrappers::MPI::Vector right_hand_side_aqueous_saturation;
 	PETScWrappers::PreconditionBoomerAMG preconditioner_aqueous_saturation;
-
-    PETScWrappers::MPI::Vector pl_solution;
-    PETScWrappers::MPI::Vector pl_solution_n;
-    PETScWrappers::MPI::Vector pl_solution_nminus1;
-
-    PETScWrappers::MPI::Vector Sa_solution_n;
-    PETScWrappers::MPI::Vector Sa_solution_nminus1;
-
-    PETScWrappers::MPI::Vector Sv_solution_n;
-    PETScWrappers::MPI::Vector Sv_solution_nminus1;
 
     FE_DGQ<dim> fe_dg0;
     DoFHandler<dim> dof_handler_dg0;
@@ -343,11 +333,11 @@ namespace AqueousSaturation
 
   template <int dim>
   void AqueousSaturationProblem<dim>::assemble_system_matrix_aqueous_saturation(double time_step_, double time_,unsigned int timestep_number_,bool rebuild_matrix_,
-										PETScWrappers::MPI::Vector pl_solution_, PETScWrappers::MPI::Vector pl_solution_n_,
-										PETScWrappers::MPI::Vector pl_solution_nminus1_,
-										PETScWrappers::MPI::Vector Sa_solution_n_, PETScWrappers::MPI::Vector Sa_solution_nminus1_,
-										PETScWrappers::MPI::Vector Sv_solution_n_, PETScWrappers::MPI::Vector Sv_solution_nminus1_,
-										PETScWrappers::MPI::Vector totalDarcyvelocity_RT_)
+										const PETScWrappers::MPI::Vector &pl_solution_, const PETScWrappers::MPI::Vector &pl_solution_n_,
+										const PETScWrappers::MPI::Vector &pl_solution_nminus1_,
+										const PETScWrappers::MPI::Vector &Sa_solution_n_, const PETScWrappers::MPI::Vector &Sa_solution_nminus1_,
+										const PETScWrappers::MPI::Vector &Sv_solution_n_, const PETScWrappers::MPI::Vector &Sv_solution_nminus1_,
+										const PETScWrappers::MPI::Vector &totalDarcyVelocity_RT_)
   {
     rebuild_matrix = rebuild_matrix_;
 
@@ -409,68 +399,76 @@ namespace AqueousSaturation
     // Neumann term
     NeumannTermAqueousSaturation<dim> neumann_fcn;
 
-    // Solutions on this processor
-    PETScWrappers::MPI::Vector temp_pl_solution;
-    PETScWrappers::MPI::Vector temp_pl_solution_n;
-    PETScWrappers::MPI::Vector temp_pl_solution_nminus1;
-
-    PETScWrappers::MPI::Vector temp_Sa_solution_n;
-    PETScWrappers::MPI::Vector temp_Sa_solution_nminus1;
-
-    PETScWrappers::MPI::Vector temp_Sv_solution_n;
-    PETScWrappers::MPI::Vector temp_Sv_solution_nminus1;
-
-    PETScWrappers::MPI::Vector temp_totalDarcyVelocity_RT;
-
     PETScWrappers::MPI::Vector temp_kappa;
-
-    temp_pl_solution.reinit(locally_owned_dofs,
-			    locally_relevant_dofs,
-			    mpi_communicator);
-
-    temp_pl_solution_n.reinit(locally_owned_dofs,
-			      locally_relevant_dofs,
-			      mpi_communicator);
-
-    temp_pl_solution_nminus1.reinit(locally_owned_dofs,
-				    locally_relevant_dofs,
-				    mpi_communicator);
-
-    temp_Sa_solution_n.reinit(locally_owned_dofs,
-			      locally_relevant_dofs,
-			      mpi_communicator);
-
-    temp_Sa_solution_nminus1.reinit(locally_owned_dofs,
-				    locally_relevant_dofs,
-				    mpi_communicator);
-
-    temp_Sv_solution_n.reinit(locally_owned_dofs,
-			      locally_relevant_dofs,
-			      mpi_communicator);
-
-    temp_Sv_solution_nminus1.reinit(locally_owned_dofs,
-				    locally_relevant_dofs,
-				    mpi_communicator);
-
-    temp_totalDarcyVelocity_RT.reinit(locally_owned_dofs_RT,
-				      locally_relevant_dofs_RT,
-				      mpi_communicator);
 
     temp_kappa.reinit(locally_owned_dofs_dg0,
 		      locally_relevant_dofs_dg0,
 		      mpi_communicator);
 
-    temp_pl_solution = pl_solution_;
-    temp_pl_solution_n = pl_solution_n_;
-    temp_pl_solution_nminus1 = pl_solution_nminus1_;
+	PETScWrappers::MPI::Vector pl_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
 
-    temp_Sa_solution_n = Sa_solution_n_;
-    temp_Sa_solution_nminus1 = Sa_solution_nminus1_;
+	pl_ghosted = pl_solution_;
+	pl_ghosted.update_ghost_values();
 
-    temp_Sv_solution_n = Sv_solution_n_;
-    temp_Sv_solution_nminus1 = Sv_solution_nminus1_;
+	PETScWrappers::MPI::Vector pl_n_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
 
-    temp_totalDarcyVelocity_RT = totalDarcyvelocity_RT_;
+	pl_n_ghosted = pl_solution_n_;
+	pl_n_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector pl_nminus1_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	pl_nminus1_ghosted = pl_solution_nminus1_;
+	pl_nminus1_ghosted.update_ghost_values();
+
+
+	PETScWrappers::MPI::Vector Sa_n_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	Sa_n_ghosted = Sa_solution_n_;
+	Sa_n_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sa_nminus1_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	Sa_nminus1_ghosted = Sa_solution_nminus1_;
+	Sa_nminus1_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sv_n_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	Sv_n_ghosted = Sv_solution_n_;
+	Sv_n_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sv_nminus1_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	Sv_nminus1_ghosted = Sv_solution_nminus1_;
+	Sv_nminus1_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector totalDarcyVelocity_RT_ghosted(
+		locally_owned_dofs_RT,
+		locally_relevant_dofs_RT,
+		mpi_communicator);
+
+	totalDarcyVelocity_RT_ghosted = totalDarcyVelocity_RT_;
+	totalDarcyVelocity_RT_ghosted.update_ghost_values();
 
     temp_kappa = kappa_abs_vec;
 
@@ -524,24 +522,23 @@ namespace AqueousSaturation
       std::vector<Tensor<1, dim>> old_Sv_grads(n_qpoints);
       std::vector<Tensor<1, dim>> old_Sv_grads_nminus1(n_qpoints);
 
-      fe_v.get_function_values(temp_pl_solution, pl_vals);
-      fe_v.get_function_values(temp_pl_solution_n, old_pl_vals);
-      fe_v.get_function_values(temp_pl_solution_nminus1, old_pl_vals_nminus1);
-      fe_v.get_function_gradients(temp_pl_solution, pl_grads);
+	  fe_v.get_function_values(pl_ghosted, pl_vals);
+      fe_v.get_function_values(pl_n_ghosted, old_pl_vals);
+      fe_v.get_function_values(pl_nminus1_ghosted, old_pl_vals_nminus1);
+	  fe_v.get_function_gradients(pl_ghosted, pl_grads);
 
-      fe_v.get_function_values(temp_Sa_solution_n, old_Sa_vals);
-      fe_v.get_function_values(temp_Sa_solution_nminus1, old_Sa_vals_nminus1);
-      fe_v.get_function_gradients(temp_Sa_solution_n, old_Sa_grads);
-      fe_v.get_function_gradients(temp_Sa_solution_nminus1, old_Sa_grads_nminus1);
+      fe_v.get_function_values(Sa_n_ghosted, old_Sa_vals);
+      fe_v.get_function_values(Sa_nminus1_ghosted, old_Sa_vals_nminus1);
+      fe_v.get_function_gradients(Sa_n_ghosted, old_Sa_grads);
+      fe_v.get_function_gradients(Sa_nminus1_ghosted, old_Sa_grads_nminus1);
 
-
-      fe_v.get_function_values(temp_Sv_solution_n, old_Sv_vals);
-      fe_v.get_function_values(temp_Sv_solution_nminus1, old_Sv_vals_nminus1);
-      fe_v.get_function_gradients(temp_Sv_solution_n, old_Sv_grads);
-      fe_v.get_function_gradients(temp_Sv_solution_nminus1, old_Sv_grads_nminus1);
+      fe_v.get_function_values(Sv_n_ghosted, old_Sv_vals);
+      fe_v.get_function_values(Sv_nminus1_ghosted, old_Sv_vals_nminus1);
+      fe_v.get_function_gradients(Sv_n_ghosted, old_Sv_grads);
+      fe_v.get_function_gradients(Sv_nminus1_ghosted, old_Sv_grads_nminus1);
 
       std::vector<Tensor<1, dim>> DarcyVelocities(n_qpoints);
-      fe_values_RT[velocities].get_function_values(temp_totalDarcyVelocity_RT, DarcyVelocities);
+      fe_values_RT[velocities].get_function_values(totalDarcyVelocity_RT_ghosted, DarcyVelocities);
 
       // get maximum of Darcy Velocity, This is for artificial viscosity stuff
  //      std::vector<double> linf_norm_Darcy_vel(n_qpoints);
@@ -794,15 +791,6 @@ namespace AqueousSaturation
 	  const FEFaceValuesBase<dim> &fe_face_values_RT =
 	  scratch_data.fe_interface_values_RT.get_fe_face_values(0);
 
-      // FEFaceValues<dim> fe_face_values_RT(fe_RT,
-					 //  face_quadrature,
-					 //  update_values);
-
-      // typename DoFHandler<dim>::cell_iterator cell_RT(&triangulation,
-						//       cell->level(), cell->index(), &dof_handler_RT);
-      //
-      // fe_face_values_RT.reinit(cell_RT, face_no);
-
       const unsigned int n_facet_dofs = fe_face.dofs_per_cell;
       const std::vector<double> &        JxW     = fe_face.get_JxW_values();
       const std::vector<Tensor<1, dim>> &normals = fe_face.get_normal_vectors();
@@ -833,22 +821,21 @@ namespace AqueousSaturation
       std::vector<Tensor<1, dim>> old_Sv_grads(n_qpoints);
       std::vector<Tensor<1, dim>> old_Sv_grads_nminus1(n_qpoints);
 
-      fe_face.get_function_values(temp_pl_solution, pl_vals);
-      fe_face.get_function_gradients(temp_pl_solution, pl_grads);
+	  fe_face.get_function_values(pl_ghosted, pl_vals);
+	  fe_face.get_function_gradients(pl_ghosted, pl_grads);
 
-      fe_face.get_function_values(temp_Sa_solution_n, old_Sa_vals);
-      fe_face.get_function_values(temp_Sa_solution_nminus1, old_Sa_vals_nminus1);
-      fe_face.get_function_gradients(temp_Sa_solution_n, old_Sa_grads);
-      fe_face.get_function_gradients(temp_Sa_solution_nminus1, old_Sa_grads_nminus1);
+      fe_face.get_function_values(Sa_n_ghosted, old_Sa_vals);
+      fe_face.get_function_values(Sa_nminus1_ghosted, old_Sa_vals_nminus1);
+      fe_face.get_function_gradients(Sa_n_ghosted, old_Sa_grads);
+      fe_face.get_function_gradients(Sa_nminus1_ghosted, old_Sa_grads_nminus1);
 
-
-      fe_face.get_function_values(temp_Sv_solution_n, old_Sv_vals);
-      fe_face.get_function_values(temp_Sv_solution_nminus1, old_Sv_vals_nminus1);
-      fe_face.get_function_gradients(temp_Sv_solution_n, old_Sv_grads);
-      fe_face.get_function_gradients(temp_Sv_solution_nminus1, old_Sv_grads_nminus1);
+      fe_face.get_function_values(Sv_n_ghosted, old_Sv_vals);
+      fe_face.get_function_values(Sv_nminus1_ghosted, old_Sv_vals_nminus1);
+      fe_face.get_function_gradients(Sv_n_ghosted, old_Sv_grads);
+      fe_face.get_function_gradients(Sv_nminus1_ghosted, old_Sv_grads_nminus1);
 
       std::vector<Tensor<1, dim>> DarcyVelocities(n_qpoints);
-      fe_face_values_RT[velocities].get_function_values(temp_totalDarcyVelocity_RT, DarcyVelocities);
+      fe_face_values_RT[velocities].get_function_values(totalDarcyVelocity_RT_ghosted, DarcyVelocities);
 
       // get maximum of Darcy Velocity. Art visc stuff (not fully tested/working)
  //      std::vector<double> linf_norm_Darcy_vel(n_qpoints);
@@ -1275,29 +1262,13 @@ namespace AqueousSaturation
       const unsigned int n_dofs        = fe_iv.n_current_interface_dofs();
       copy_data_face.joint_dof_indices = fe_iv.get_interface_dof_indices();
       if (rebuild_matrix){
-	copy_data_face.cell_matrix.reinit(n_dofs, n_dofs);
+			copy_data_face.cell_matrix.reinit(n_dofs, n_dofs);
       }
 
       copy_data_face.cell_rhs.reinit(n_dofs);
 
       const std::vector<double> &        JxW     = fe_iv.get_JxW_values();
       const std::vector<Tensor<1, dim>> &normals = fe_iv.get_normal_vectors();
-
-      // FEFaceValues<dim> fe_face_values_RT(fe_RT,
-					 //  face_quadrature,
-					 //  update_values);
-      //
-      // FEFaceValues<dim> fe_face_values_RT_neighbor(fe_RT,
-						//    face_quadrature,
-						//    update_values);
-      //
-      // typename DoFHandler<dim>::cell_iterator cell_RT(&triangulation,
-						//       cell->level(), cell->index(), &dof_handler_RT);
-      // typename DoFHandler<dim>::cell_iterator cell_RT_neighbor(&triangulation,
-						// 	       ncell->level(), ncell->index(), &dof_handler_RT);
-      //
-      // fe_face_values_RT.reinit(cell_RT, f);
-      // fe_face_values_RT_neighbor.reinit(cell_RT_neighbor, nf);
 
 	  auto cell_RT = cell->as_dof_handler_iterator(dof_handler_RT);
 	  auto ncell_RT = ncell->as_dof_handler_iterator(dof_handler_RT);
@@ -1336,37 +1307,37 @@ namespace AqueousSaturation
       std::vector<Tensor<1, dim>> old_Sv_grads_neighbor(n_qpoints);
       std::vector<Tensor<1, dim>> old_Sv_grads_nminus1_neighbor(n_qpoints);
 
-      fe_face.get_function_values(temp_pl_solution, pl_vals);
-      fe_face_neighbor.get_function_values(temp_pl_solution, pl_vals_neighbor);
+	  fe_face.get_function_values(pl_ghosted, pl_vals);
+	  fe_face_neighbor.get_function_values(pl_ghosted, pl_vals_neighbor);
 
-      fe_face.get_function_gradients(temp_pl_solution, pl_grads);
-      fe_face_neighbor.get_function_gradients(temp_pl_solution, pl_grads_neighbor);
+	  fe_face.get_function_gradients(pl_ghosted, pl_grads);
+	  fe_face_neighbor.get_function_gradients(pl_ghosted, pl_grads_neighbor);
 
-      fe_face.get_function_values(temp_Sa_solution_n, old_Sa_vals);
-      fe_face.get_function_values(temp_Sa_solution_nminus1, old_Sa_vals_nminus1);
-      fe_face.get_function_gradients(temp_Sa_solution_n, old_Sa_grads);
-      fe_face.get_function_gradients(temp_Sa_solution_nminus1, old_Sa_grads_nminus1);
+      fe_face.get_function_values(Sa_n_ghosted, old_Sa_vals);
+      fe_face.get_function_values(Sa_nminus1_ghosted, old_Sa_vals_nminus1);
+      fe_face.get_function_gradients(Sa_n_ghosted, old_Sa_grads);
+      fe_face.get_function_gradients(Sa_nminus1_ghosted, old_Sa_grads_nminus1);
 
-      fe_face_neighbor.get_function_values(temp_Sa_solution_n, old_Sa_vals_neighbor);
-      fe_face_neighbor.get_function_values(temp_Sa_solution_nminus1, old_Sa_vals_nminus1_neighbor);
-      fe_face_neighbor.get_function_gradients(temp_Sa_solution_n, old_Sa_grads_neighbor);
-      fe_face_neighbor.get_function_gradients(temp_Sa_solution_nminus1, old_Sa_grads_nminus1_neighbor);
+      fe_face_neighbor.get_function_values(Sa_n_ghosted, old_Sa_vals_neighbor);
+      fe_face_neighbor.get_function_values(Sa_nminus1_ghosted, old_Sa_vals_nminus1_neighbor);
+      fe_face_neighbor.get_function_gradients(Sa_n_ghosted, old_Sa_grads_neighbor);
+      fe_face_neighbor.get_function_gradients(Sa_nminus1_ghosted, old_Sa_grads_nminus1_neighbor);
 
-      fe_face.get_function_values(temp_Sv_solution_n, old_Sv_vals);
-      fe_face.get_function_values(temp_Sv_solution_nminus1, old_Sv_vals_nminus1);
-      fe_face.get_function_gradients(temp_Sv_solution_n, old_Sv_grads);
-      fe_face.get_function_gradients(temp_Sv_solution_nminus1, old_Sv_grads_nminus1);
+      fe_face.get_function_values(Sv_n_ghosted, old_Sv_vals);
+      fe_face.get_function_values(Sv_nminus1_ghosted, old_Sv_vals_nminus1);
+      fe_face.get_function_gradients(Sv_n_ghosted, old_Sv_grads);
+      fe_face.get_function_gradients(Sv_nminus1_ghosted, old_Sv_grads_nminus1);
 
-      fe_face_neighbor.get_function_values(temp_Sv_solution_n, old_Sv_vals_neighbor);
-      fe_face_neighbor.get_function_values(temp_Sv_solution_nminus1, old_Sv_vals_nminus1_neighbor);
-      fe_face_neighbor.get_function_gradients(temp_Sv_solution_n, old_Sv_grads_neighbor);
-      fe_face_neighbor.get_function_gradients(temp_Sv_solution_nminus1, old_Sv_grads_nminus1_neighbor);
+      fe_face_neighbor.get_function_values(Sv_n_ghosted, old_Sv_vals_neighbor);
+      fe_face_neighbor.get_function_values(Sv_nminus1_ghosted, old_Sv_vals_nminus1_neighbor);
+      fe_face_neighbor.get_function_gradients(Sv_n_ghosted, old_Sv_grads_neighbor);
+      fe_face_neighbor.get_function_gradients(Sv_nminus1_ghosted, old_Sv_grads_nminus1_neighbor);
 
       std::vector<Tensor<1, dim>> DarcyVelocities(n_qpoints);
-      fe_face_values_RT[velocities].get_function_values(temp_totalDarcyVelocity_RT, DarcyVelocities);
+      fe_face_values_RT[velocities].get_function_values(totalDarcyVelocity_RT_ghosted, DarcyVelocities);
 
       std::vector<Tensor<1, dim>> DarcyVelocities_neighbor(n_qpoints);
-      fe_face_values_RT_neighbor[velocities].get_function_values(temp_totalDarcyVelocity_RT, DarcyVelocities_neighbor);
+      fe_face_values_RT_neighbor[velocities].get_function_values(totalDarcyVelocity_RT_ghosted, DarcyVelocities_neighbor);
 
       // get maximum of Darcy Velocity
       std::vector<double> linf_norm_Darcy_vel0(n_qpoints);
@@ -1601,10 +1572,10 @@ namespace AqueousSaturation
 																				coef0_diff_stab, coef1_diff_stab,
 	  																		weight0_diff_stab, weight1_diff_stab);
 
-		  weighted_averages_stab[i] = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf, nsf, fe_iv,
+		  weighted_averages[i] = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf, nsf, fe_iv,
 																						   normals[point],
 																					 i, point,
-																					 coef0_diff_stab, coef1_diff_stab,
+																					 coef0_diff, coef1_diff,
 																					 weight0_diff, weight1_diff);
 	  }
 	  // start of interior face terms
@@ -1828,7 +1799,7 @@ namespace AqueousSaturation
   }
 
   template <int dim>
-  void AqueousSaturationProblem<dim>::solve_aqueous_saturation( PETScWrappers::MPI::Vector pl_solution_)
+  void AqueousSaturationProblem<dim>::solve_aqueous_saturation()
   {
     Sa_solution.reinit(locally_owned_dofs, mpi_communicator);
 
@@ -1849,7 +1820,7 @@ namespace AqueousSaturation
       }
     else
       {
-	SolverControl solver_control(pl_solution_.size(), 1.e-7 * right_hand_side_aqueous_saturation.l2_norm());
+	SolverControl solver_control(locally_owned_dofs.size(), 1.e-7 * right_hand_side_aqueous_saturation.l2_norm());
 
 	PETScWrappers::SolverGMRES gmres(solver_control, mpi_communicator);
 	// PETScWrappers::PreconditionBoomerAMG preconditioner(system_matrix_aqueous_saturation);

@@ -57,6 +57,57 @@ namespace VaporSaturation
 {
   using namespace dealii;
 
+  template <int dim>
+  struct ScratchData
+  {
+	  ScratchData(const Mapping<dim>        &mapping,
+				  const FiniteElement<dim>  &fe,
+			   const FiniteElement<dim>  &fe_RT,
+			   const Quadrature<dim>     &quadrature,
+			   const Quadrature<dim - 1> &quadrature_face,
+			   const UpdateFlags          update_flags = update_values |
+			   update_gradients |
+			   update_quadrature_points |
+			   update_JxW_values,
+			   const UpdateFlags interface_update_flags =
+			   update_values | update_gradients | update_quadrature_points |
+			   update_JxW_values | update_normal_vectors)
+	  : fe_values(mapping, fe, quadrature, update_flags)
+	  , fe_values_RT(mapping, fe_RT, quadrature, update_flags)
+	  , fe_interface_values(mapping,
+							fe,
+						 quadrature_face,
+						 interface_update_flags)
+	  , fe_interface_values_RT(fe_RT,
+							   quadrature_face,
+							interface_update_flags)
+	  {}
+
+
+	  ScratchData(const ScratchData<dim> &scratch_data)
+	  : fe_values(scratch_data.fe_values.get_mapping(),
+				  scratch_data.fe_values.get_fe(),
+				  scratch_data.fe_values.get_quadrature(),
+				  scratch_data.fe_values.get_update_flags())
+	  , fe_values_RT(scratch_data.fe_values_RT.get_mapping(),
+					 scratch_data.fe_values_RT.get_fe(),
+					 scratch_data.fe_values_RT.get_quadrature(),
+					 scratch_data.fe_values_RT.get_update_flags())
+	  , fe_interface_values(scratch_data.fe_interface_values.get_mapping(),
+							scratch_data.fe_interface_values.get_fe(),
+							scratch_data.fe_interface_values.get_quadrature(),
+							scratch_data.fe_interface_values.get_update_flags())
+	  , fe_interface_values_RT(scratch_data.fe_interface_values_RT.get_fe(),
+							   scratch_data.fe_interface_values_RT.get_quadrature(),
+							   scratch_data.fe_interface_values_RT.get_update_flags())
+	  {}
+
+	  FEValues<dim>          fe_values;
+	  FEValues<dim>          fe_values_RT;
+	  FEInterfaceValues<dim> fe_interface_values;
+	  FEInterfaceValues<dim> fe_interface_values_RT;
+  };
+
   struct CopyDataFace
   {
     FullMatrix<double>                   cell_matrix;
@@ -109,15 +160,17 @@ namespace VaporSaturation
     void setup_system();
 
     void assemble_system_matrix_vapor_saturation(double time_step_, double time_, unsigned int timestep_number_,bool rebuild_matrix_,
-						 PETScWrappers::MPI::Vector pl_solution_,
-						 PETScWrappers::MPI::Vector pl_solution_n_,
-						 PETScWrappers::MPI::Vector pl_solution_nminus1_,
-						 PETScWrappers::MPI::Vector Sa_solution_,
-						 PETScWrappers::MPI::Vector Sa_solution_n_, PETScWrappers::MPI::Vector Sa_solution_nminus1_,
-						 PETScWrappers::MPI::Vector Sv_solution_n_, PETScWrappers::MPI::Vector Sv_solution_nminus1_,
-						 PETScWrappers::MPI::Vector totalDarcyvelocity_RT_);
+						 const PETScWrappers::MPI::Vector &pl_solution_,
+						 const PETScWrappers::MPI::Vector &pl_solution_n_,
+						 const PETScWrappers::MPI::Vector &pl_solution_nminus1_,
+						 const PETScWrappers::MPI::Vector &Sa_solution_,
+						 const PETScWrappers::MPI::Vector &Sa_solution_n_,
+						 const PETScWrappers::MPI::Vector &Sa_solution_nminus1_,
+						 const PETScWrappers::MPI::Vector &Sv_solution_n_,
+						 const PETScWrappers::MPI::Vector &Sv_solution_nminus1_,
+						 const PETScWrappers::MPI::Vector &totalDarcyvelocity_RT_);
 
-    void solve_vapor_saturation(PETScWrappers::MPI::Vector pl_solution_);
+    void solve_vapor_saturation();
 
     PETScWrappers::MPI::Vector Sv_solution;
   private:
@@ -128,8 +181,6 @@ namespace VaporSaturation
 
     const QGauss<dim>     quadrature;
     const QGauss<dim - 1> face_quadrature;
-
-    using ScratchData = MeshWorker::ScratchData<dim>;
 
     FE_DGQ<dim>     fe;
     DoFHandler<dim> dof_handler;
@@ -153,17 +204,6 @@ namespace VaporSaturation
     PETScWrappers::MPI::SparseMatrix system_matrix_vapor_saturation;
     PETScWrappers::MPI::Vector right_hand_side_vapor_saturation;
 	PETScWrappers::PreconditionBoomerAMG preconditioner_vapor_saturation;
-
-    PETScWrappers::MPI::Vector pl_solution;
-    PETScWrappers::MPI::Vector pl_solution_n;
-    PETScWrappers::MPI::Vector pl_solution_nminus1;
-
-    PETScWrappers::MPI::Vector Sv_solution_n;
-    PETScWrappers::MPI::Vector Sv_solution_nminus1;
-
-    PETScWrappers::MPI::Vector Sa_solution;
-    PETScWrappers::MPI::Vector Sa_solution_n;
-    PETScWrappers::MPI::Vector Sa_solution_nminus1;
 
     FE_DGQ<dim> fe_dg0;
     DoFHandler<dim> dof_handler_dg0;
@@ -286,13 +326,15 @@ namespace VaporSaturation
 
   template <int dim>
   void VaporSaturationProblem<dim>::assemble_system_matrix_vapor_saturation(double time_step_, double time_, unsigned int timestep_number_, bool rebuild_matrix_,
-									    PETScWrappers::MPI::Vector pl_solution_,
-									    PETScWrappers::MPI::Vector pl_solution_n_,
-									    PETScWrappers::MPI::Vector pl_solution_nminus1_,
-									    PETScWrappers::MPI::Vector Sa_solution_,
-									    PETScWrappers::MPI::Vector Sa_solution_n_, PETScWrappers::MPI::Vector Sa_solution_nminus1_,
-									    PETScWrappers::MPI::Vector Sv_solution_n_, PETScWrappers::MPI::Vector Sv_solution_nminus1_,
-									    PETScWrappers::MPI::Vector totalDarcyvelocity_RT_)
+									    const PETScWrappers::MPI::Vector &pl_solution_,
+									    const PETScWrappers::MPI::Vector &pl_solution_n_,
+									    const PETScWrappers::MPI::Vector &pl_solution_nminus1_,
+									    const PETScWrappers::MPI::Vector &Sa_solution_,
+									    const PETScWrappers::MPI::Vector &Sa_solution_n_,
+										const PETScWrappers::MPI::Vector &Sa_solution_nminus1_,
+									    const PETScWrappers::MPI::Vector &Sv_solution_n_,
+										const PETScWrappers::MPI::Vector &Sv_solution_nminus1_,
+									    const PETScWrappers::MPI::Vector &totalDarcyVelocity_RT_)
   {
     rebuild_matrix = rebuild_matrix_;
 
@@ -349,83 +391,93 @@ namespace VaporSaturation
     // Neumann term
     NeumannTermVaporSaturation<dim> neumann_fcn;
 
-    PETScWrappers::MPI::Vector temp_pl_solution;
-    PETScWrappers::MPI::Vector temp_pl_solution_n;
-    PETScWrappers::MPI::Vector temp_pl_solution_nminus1;
-
-    PETScWrappers::MPI::Vector temp_Sa_solution;
-    PETScWrappers::MPI::Vector temp_Sa_solution_n;
-    PETScWrappers::MPI::Vector temp_Sa_solution_nminus1;
-
-    PETScWrappers::MPI::Vector temp_Sv_solution_n;
-    PETScWrappers::MPI::Vector temp_Sv_solution_nminus1;
-
-    PETScWrappers::MPI::Vector temp_totalDarcyVelocity_RT;
-
     PETScWrappers::MPI::Vector temp_kappa;
-
-    temp_pl_solution.reinit(locally_owned_dofs,
-			    locally_relevant_dofs,
-			    mpi_communicator);
-
-    temp_pl_solution_n.reinit(locally_owned_dofs,
-			      locally_relevant_dofs,
-			      mpi_communicator);
-
-    temp_pl_solution_nminus1.reinit(locally_owned_dofs,
-				    locally_relevant_dofs,
-				    mpi_communicator);
-
-
-    temp_Sa_solution.reinit(locally_owned_dofs,
-			    locally_relevant_dofs,
-			    mpi_communicator);
-
-    temp_Sa_solution_n.reinit(locally_owned_dofs,
-			      locally_relevant_dofs,
-			      mpi_communicator);
-
-    temp_Sa_solution_nminus1.reinit(locally_owned_dofs,
-				    locally_relevant_dofs,
-				    mpi_communicator);
-
-    temp_Sv_solution_n.reinit(locally_owned_dofs,
-			      locally_relevant_dofs,
-			      mpi_communicator);
-
-    temp_Sv_solution_nminus1.reinit(locally_owned_dofs,
-				    locally_relevant_dofs,
-				    mpi_communicator);
-
-    temp_totalDarcyVelocity_RT.reinit(locally_owned_dofs_RT,
-				      locally_relevant_dofs_RT,
-				      mpi_communicator);
 
     temp_kappa.reinit(locally_owned_dofs_dg0,
 		      locally_relevant_dofs_dg0,
 		      mpi_communicator);
 
-    temp_pl_solution = pl_solution_;
-    temp_pl_solution_n = pl_solution_n_;
-    temp_pl_solution_nminus1 = pl_solution_nminus1_;
-
-    temp_Sa_solution = Sa_solution_;
-    temp_Sa_solution_n = Sa_solution_n_;
-    temp_Sa_solution_nminus1 = Sa_solution_nminus1_;
-
-    temp_Sv_solution_n = Sv_solution_n_;
-    temp_Sv_solution_nminus1 = Sv_solution_nminus1_;
-
-    temp_totalDarcyVelocity_RT = totalDarcyvelocity_RT_;
-
     temp_kappa = kappa_abs_vec;
+
+	PETScWrappers::MPI::Vector pl_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	pl_ghosted = pl_solution_;
+	pl_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector pl_n_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	pl_n_ghosted = pl_solution_n_;
+	pl_n_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector pl_nminus1_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	pl_nminus1_ghosted = pl_solution_nminus1_;
+	pl_nminus1_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sa_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	Sa_ghosted = Sa_solution_;
+	Sa_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sa_n_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	Sa_n_ghosted = Sa_solution_n_;
+	Sa_n_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sa_nminus1_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	Sa_nminus1_ghosted = Sa_solution_nminus1_;
+	Sa_nminus1_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sv_n_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	Sv_n_ghosted = Sv_solution_n_;
+	Sv_n_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector Sv_nminus1_ghosted(
+		locally_owned_dofs,
+		locally_relevant_dofs,
+		mpi_communicator);
+
+	Sv_nminus1_ghosted = Sv_solution_nminus1_;
+	Sv_nminus1_ghosted.update_ghost_values();
+
+	PETScWrappers::MPI::Vector totalDarcyVelocity_RT_ghosted(
+		locally_owned_dofs_RT,
+		locally_relevant_dofs_RT,
+		mpi_communicator);
+
+	totalDarcyVelocity_RT_ghosted = totalDarcyVelocity_RT_;
+	totalDarcyVelocity_RT_ghosted.update_ghost_values();
 
     // Volume integrals
     const auto cell_worker = [&](const auto &cell,
-				 auto &scratch_data,
+				 ScratchData<dim> &scratch_data,
 				 auto & copy_data)
     {
-      const FEValues<dim> &fe_v = scratch_data.reinit(cell);
+		scratch_data.fe_values.reinit(cell);
+		const FEValues<dim>       &fe_v = scratch_data.fe_values;
 
       const unsigned int n_dofs = fe_v.dofs_per_cell;
 
@@ -441,14 +493,10 @@ namespace VaporSaturation
 
       const std::vector<double> &JxW  = fe_v.get_JxW_values();
 
-      FEValues<dim> fe_values_RT(fe_RT,
-				 quadrature,
-				 update_values);
+	  auto cell_RT = cell->as_dof_handler_iterator(dof_handler_RT);
 
-      typename DoFHandler<dim>::cell_iterator cell_RT(&triangulation,
-						      cell->level(), cell->index(), &dof_handler_RT);
-
-      fe_values_RT.reinit(cell_RT);
+	  scratch_data.fe_values_RT.reinit(cell_RT);
+	  const FEValues<dim>       &fe_values_RT = scratch_data.fe_values_RT;
 
       std::vector<double>         rhs_values(n_qpoints);
       right_hand_side_fcn.set_time(time);
@@ -470,22 +518,22 @@ namespace VaporSaturation
       std::vector<Tensor<1, dim>> old_Sv_grads(n_qpoints);
       std::vector<Tensor<1, dim>> old_Sv_grads_nminus1(n_qpoints);
 
-      fe_v.get_function_values(temp_pl_solution, pl_vals);
-      fe_v.get_function_values(temp_pl_solution_n, old_pl_vals);
-      fe_v.get_function_values(temp_pl_solution_nminus1, old_pl_vals_nminus1);
-      fe_v.get_function_gradients(temp_pl_solution, pl_grads);
+	  fe_v.get_function_values(pl_ghosted, pl_vals);
+	  fe_v.get_function_values(pl_n_ghosted, old_pl_vals);
+	  fe_v.get_function_values(pl_nminus1_ghosted, old_pl_vals_nminus1);
+	  fe_v.get_function_gradients(pl_ghosted, pl_grads);
 
-      fe_v.get_function_values(temp_Sa_solution, Sa_vals);
-      fe_v.get_function_values(temp_Sa_solution_n, old_Sa_vals);
-      fe_v.get_function_values(temp_Sa_solution_nminus1, old_Sa_vals_nminus1);
+      fe_v.get_function_values(Sa_ghosted, Sa_vals);
+      fe_v.get_function_values(Sa_n_ghosted, old_Sa_vals);
+      fe_v.get_function_values(Sa_nminus1_ghosted, old_Sa_vals_nminus1);
 
-      fe_v.get_function_values(temp_Sv_solution_n, old_Sv_vals);
-      fe_v.get_function_values(temp_Sv_solution_nminus1, old_Sv_vals_nminus1);
-      fe_v.get_function_gradients(temp_Sv_solution_n, old_Sv_grads);
-      fe_v.get_function_gradients(temp_Sv_solution_nminus1, old_Sv_grads_nminus1);
+	  fe_v.get_function_values(Sv_n_ghosted, old_Sv_vals);
+	  fe_v.get_function_values(Sv_nminus1_ghosted, old_Sv_vals_nminus1);
+	  fe_v.get_function_gradients(Sv_n_ghosted, old_Sv_grads);
+	  fe_v.get_function_gradients(Sv_nminus1_ghosted, old_Sv_grads_nminus1);
 
-      std::vector<Tensor<1, dim>> DarcyVelocities(n_qpoints);
-      fe_values_RT[velocities].get_function_values(temp_totalDarcyVelocity_RT, DarcyVelocities);
+	  std::vector<Tensor<1, dim>> DarcyVelocities(n_qpoints);
+	  fe_values_RT[velocities].get_function_values(totalDarcyVelocity_RT_ghosted, DarcyVelocities);
 
       double kappa = temp_kappa[cell->global_active_cell_index()];
 
@@ -674,26 +722,25 @@ namespace VaporSaturation
     // Boundary face integrals
     const auto boundary_worker = [&](const auto &cell,
 				     const unsigned int &face_no,
-				     auto &scratch_data,
+				     ScratchData<dim>   &scratch_data,
 				     auto & copy_data)
     {
-      const FEFaceValuesBase<dim> &fe_face = scratch_data.reinit(cell, face_no);
+		scratch_data.fe_interface_values.reinit(cell, face_no);
+		const FEFaceValuesBase<dim> &fe_face =
+		scratch_data.fe_interface_values.get_fe_face_values(0);
 
-      const auto &q_points = scratch_data.get_quadrature_points();
+      const auto &q_points = fe_face.get_quadrature_points();
       const int n_qpoints = q_points.size();
 
       const unsigned int n_facet_dofs = fe_face.dofs_per_cell;
-      const std::vector<double> &        JxW     = scratch_data.get_JxW_values();
-      const std::vector<Tensor<1, dim>> &normals = scratch_data.get_normal_vectors();
+	  const std::vector<double> &        JxW     = fe_face.get_JxW_values();
+	  const std::vector<Tensor<1, dim>> &normals = fe_face.get_normal_vectors();
 
-      FEFaceValues<dim> fe_face_values_RT(fe_RT,
-					  face_quadrature,
-					  update_values);
+	  auto cell_RT = cell->as_dof_handler_iterator(dof_handler_RT);
 
-      typename DoFHandler<dim>::cell_iterator cell_RT(&triangulation,
-						      cell->level(), cell->index(), &dof_handler_RT);
-
-      fe_face_values_RT.reinit(cell_RT, face_no);
+	  scratch_data.fe_interface_values_RT.reinit(cell_RT, face_no);
+	  const FEFaceValuesBase<dim> &fe_face_values_RT =
+	  scratch_data.fe_interface_values_RT.get_fe_face_values(0);
 
       std::vector<double> g(n_qpoints);
       boundary_function.set_time(time);
@@ -715,20 +762,20 @@ namespace VaporSaturation
       std::vector<Tensor<1, dim>> old_Sv_grads(n_qpoints);
       std::vector<Tensor<1, dim>> old_Sv_grads_nminus1(n_qpoints);
 
-      fe_face.get_function_values(temp_pl_solution, pl_vals);
-      fe_face.get_function_gradients(temp_pl_solution, pl_grads);
+	  fe_face.get_function_values(pl_ghosted, pl_vals);
+	  fe_face.get_function_gradients(pl_ghosted, pl_grads);
 
-      fe_face.get_function_values(temp_Sa_solution, Sa_vals);
-      fe_face.get_function_values(temp_Sa_solution_n, old_Sa_vals);
-      fe_face.get_function_values(temp_Sa_solution_nminus1, old_Sa_vals_nminus1);
+      fe_face.get_function_values(Sa_ghosted, Sa_vals);
+	  fe_face.get_function_values(Sa_n_ghosted, old_Sa_vals);
+	  fe_face.get_function_values(Sa_nminus1_ghosted, old_Sa_vals_nminus1);
 
-      fe_face.get_function_values(temp_Sv_solution_n, old_Sv_vals);
-      fe_face.get_function_values(temp_Sv_solution_nminus1, old_Sv_vals_nminus1);
-      fe_face.get_function_gradients(temp_Sv_solution_n, old_Sv_grads);
-      fe_face.get_function_gradients(temp_Sv_solution_nminus1, old_Sv_grads_nminus1);
+	  fe_face.get_function_values(Sv_n_ghosted, old_Sv_vals);
+	  fe_face.get_function_values(Sv_nminus1_ghosted, old_Sv_vals_nminus1);
+	  fe_face.get_function_gradients(Sv_n_ghosted, old_Sv_grads);
+	  fe_face.get_function_gradients(Sv_nminus1_ghosted, old_Sv_grads_nminus1);
 
-      std::vector<Tensor<1, dim>> DarcyVelocities(n_qpoints);
-      fe_face_values_RT[velocities].get_function_values(temp_totalDarcyVelocity_RT, DarcyVelocities);
+	  std::vector<Tensor<1, dim>> DarcyVelocities(n_qpoints);
+	  fe_face_values_RT[velocities].get_function_values(totalDarcyVelocity_RT_ghosted, DarcyVelocities);
 
       double kappa = temp_kappa[cell->global_active_cell_index()];
 
@@ -1037,10 +1084,11 @@ namespace VaporSaturation
 				 const auto &ncell,
 				 const unsigned int &nf,
 				 const unsigned int &nsf,
-				 auto &scratch_data,
+				 ScratchData<dim> &scratch_data,
 				 auto & copy_data)
     {
-      const FEInterfaceValues<dim> &fe_iv = scratch_data.reinit(cell, f, sf, ncell, nf, nsf);
+		FEInterfaceValues<dim> &fe_iv = scratch_data.fe_interface_values;
+		fe_iv.reinit(cell, f, sf, ncell, nf, nsf);
 
       const auto &q_points = fe_iv.get_quadrature_points();
       const int n_qpoints = q_points.size();
@@ -1056,7 +1104,7 @@ namespace VaporSaturation
       copy_data_face.joint_dof_indices = fe_iv.get_interface_dof_indices();
 
       if (rebuild_matrix){
-	copy_data_face.cell_matrix.reinit(n_dofs, n_dofs);
+			copy_data_face.cell_matrix.reinit(n_dofs, n_dofs);
       }
 
       copy_data_face.cell_rhs.reinit(n_dofs);
@@ -1064,21 +1112,14 @@ namespace VaporSaturation
       const std::vector<double> &        JxW     = fe_iv.get_JxW_values();
       const std::vector<Tensor<1, dim>> &normals = fe_iv.get_normal_vectors();
 
-      FEFaceValues<dim> fe_face_values_RT(fe_RT,
-					  face_quadrature,
-					  update_values);
+	  auto cell_RT = cell->as_dof_handler_iterator(dof_handler_RT);
+	  auto ncell_RT = ncell->as_dof_handler_iterator(dof_handler_RT);
 
-      FEFaceValues<dim> fe_face_values_RT_neighbor(fe_RT,
-						   face_quadrature,
-						   update_values);
+	  FEInterfaceValues<dim> &fe_iv_RT = scratch_data.fe_interface_values_RT;
+	  fe_iv_RT.reinit(cell_RT, f, sf, ncell_RT, nf, nsf);
 
-      typename DoFHandler<dim>::cell_iterator cell_RT(&triangulation,
-						      cell->level(), cell->index(), &dof_handler_RT);
-      typename DoFHandler<dim>::cell_iterator cell_RT_neighbor(&triangulation,
-							       ncell->level(), ncell->index(), &dof_handler_RT);
-
-      fe_face_values_RT.reinit(cell_RT, f);
-      fe_face_values_RT_neighbor.reinit(cell_RT_neighbor, nf);
+	  const FEFaceValuesBase<dim> &fe_face_values_RT = fe_iv_RT.get_fe_face_values(0);
+	  const FEFaceValuesBase<dim> &fe_face_values_RT_neighbor = fe_iv_RT.get_fe_face_values(1);
 
       gravity_fcn.set_time(time);
 
@@ -1107,36 +1148,36 @@ namespace VaporSaturation
       std::vector<Tensor<1, dim>> old_Sv_grads_neighbor(n_qpoints);
       std::vector<Tensor<1, dim>> old_Sv_grads_nminus1_neighbor(n_qpoints);
 
-      fe_face.get_function_values(temp_pl_solution, pl_vals);
-      fe_face_neighbor.get_function_values(temp_pl_solution, pl_vals_neighbor);
+	  fe_face.get_function_values(pl_ghosted, pl_vals);
+	  fe_face_neighbor.get_function_values(pl_ghosted, pl_vals_neighbor);
 
-      fe_face.get_function_gradients(temp_pl_solution, pl_grads);
-      fe_face_neighbor.get_function_gradients(temp_pl_solution, pl_grads_neighbor);
+	  fe_face.get_function_gradients(pl_ghosted, pl_grads);
+	  fe_face_neighbor.get_function_gradients(pl_ghosted, pl_grads_neighbor);
 
-      fe_face.get_function_values(temp_Sa_solution, Sa_vals);
-      fe_face_neighbor.get_function_values(temp_Sa_solution, Sa_vals_neighbor);
+	  fe_face.get_function_values(Sa_ghosted, Sa_vals);
+	  fe_face_neighbor.get_function_values(Sa_ghosted, Sa_vals_neighbor);
 
-      fe_face.get_function_values(temp_Sa_solution_n, old_Sa_vals);
-      fe_face_neighbor.get_function_values(temp_Sa_solution_n, old_Sa_vals_neighbor);
+      fe_face.get_function_values(Sa_n_ghosted, old_Sa_vals);
+      fe_face_neighbor.get_function_values(Sa_n_ghosted, old_Sa_vals_neighbor);
 
-      fe_face.get_function_values(temp_Sa_solution_nminus1, old_Sa_vals_nminus1);
-      fe_face_neighbor.get_function_values(temp_Sa_solution_nminus1, old_Sa_vals_nminus1_neighbor);
+      fe_face.get_function_values(Sa_nminus1_ghosted, old_Sa_vals_nminus1);
+      fe_face_neighbor.get_function_values(Sa_nminus1_ghosted, old_Sa_vals_nminus1_neighbor);
 
-      fe_face.get_function_values(temp_Sv_solution_n, old_Sv_vals);
-      fe_face.get_function_values(temp_Sv_solution_nminus1, old_Sv_vals_nminus1);
-      fe_face.get_function_gradients(temp_Sv_solution_n, old_Sv_grads);
-      fe_face.get_function_gradients(temp_Sv_solution_nminus1, old_Sv_grads_nminus1);
+	  fe_face.get_function_values(Sv_n_ghosted, old_Sv_vals);
+	  fe_face.get_function_values(Sv_nminus1_ghosted, old_Sv_vals_nminus1);
+	  fe_face.get_function_gradients(Sv_n_ghosted, old_Sv_grads);
+	  fe_face.get_function_gradients(Sv_nminus1_ghosted, old_Sv_grads_nminus1);
 
-      fe_face_neighbor.get_function_values(temp_Sv_solution_n, old_Sv_vals_neighbor);
-      fe_face_neighbor.get_function_values(temp_Sv_solution_nminus1, old_Sv_vals_nminus1_neighbor);
-      fe_face_neighbor.get_function_gradients(temp_Sv_solution_n, old_Sv_grads_neighbor);
-      fe_face_neighbor.get_function_gradients(temp_Sv_solution_nminus1, old_Sv_grads_nminus1_neighbor);
+	  fe_face_neighbor.get_function_values(Sv_n_ghosted, old_Sv_vals_neighbor);
+	  fe_face_neighbor.get_function_values(Sv_nminus1_ghosted, old_Sv_vals_nminus1_neighbor);
+	  fe_face_neighbor.get_function_gradients(Sv_n_ghosted, old_Sv_grads_neighbor);
+	  fe_face_neighbor.get_function_gradients(Sv_nminus1_ghosted, old_Sv_grads_nminus1_neighbor);
 
-      std::vector<Tensor<1, dim>> DarcyVelocities(n_qpoints);
-      fe_face_values_RT[velocities].get_function_values(temp_totalDarcyVelocity_RT, DarcyVelocities);
+	  std::vector<Tensor<1, dim>> DarcyVelocities(n_qpoints);
+	  fe_face_values_RT[velocities].get_function_values(totalDarcyVelocity_RT_ghosted, DarcyVelocities);
 
-      std::vector<Tensor<1, dim>> DarcyVelocities_neighbor(n_qpoints);
-      fe_face_values_RT_neighbor[velocities].get_function_values(temp_totalDarcyVelocity_RT, DarcyVelocities_neighbor);
+	  std::vector<Tensor<1, dim>> DarcyVelocities_neighbor(n_qpoints);
+	  fe_face_values_RT_neighbor[velocities].get_function_values(totalDarcyVelocity_RT_ghosted, DarcyVelocities_neighbor);
 
       double kappa0 = temp_kappa[cell->global_active_cell_index()];
       double kappa1 = temp_kappa[ncell->global_active_cell_index()];
@@ -1316,10 +1357,10 @@ namespace VaporSaturation
 																					 coef0_diff_stab, coef1_diff_stab,
 																					 weight0_diff_stab, weight1_diff_stab);
 
-		  weighted_averages_stab[i] = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf, nsf, fe_iv,
+		  weighted_averages[i] = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf, nsf, fe_iv,
 																						   normals[point],
 																					 i, point,
-																					 coef0_diff_stab, coef1_diff_stab,
+																					 coef0_diff, coef1_diff,
 																					 weight0_diff, weight1_diff);
 	  }
 
@@ -1339,62 +1380,31 @@ namespace VaporSaturation
 
 		      if (Stab_v)
 			{
-			  // double weighted_aver_j_stab = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf,
-					// 								     nsf, fe_iv,
-					// 								     normals[point],
-					// 								     j, point,
-					// 								     coef0_diff_stab, coef1_diff_stab,
-					// 								     weight0_diff_stab, weight1_diff_stab);
-				double weighted_aver_j_stab = weighted_averages_stab[j];
 
 			  copy_data_face.cell_matrix(i, j) -=
 			    fe_iv.jump_in_shape_values(i, point)
-			    * weighted_aver_j_stab
+			    * weighted_averages_stab[j]
 			    * JxW[point];
 
-			  // double weighted_aver_i_stab = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf,
-					// 								     nsf, fe_iv,
-					// 								     normals[point],
-					// 								     i, point,
-					// 								     coef0_diff_stab, coef1_diff_stab,
-					// 								     weight0_diff_stab, weight1_diff_stab);
-				double weighted_aver_i_stab = weighted_averages_stab[i];
 
 			  copy_data_face.cell_matrix(i, j) +=
 			    theta_Sv
 			    * fe_iv.jump_in_shape_values(j, point)
-			    * weighted_aver_i_stab
+			    * weighted_averages_stab[i]
 			    * JxW[point];
 			}
 		      else
 			{
-			  // double weighted_aver_j = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf,
-					// 								nsf, fe_iv,
-					// 								normals[point],
-					// 								j, point,
-					// 								coef0_diff, coef1_diff,
-					// 								weight0_diff, weight1_diff);
-
-			  double weighted_aver_j = weighted_averages[j];
 
 			  copy_data_face.cell_matrix(i, j) -=
 			    fe_iv.jump_in_shape_values(i, point)
-			    * weighted_aver_j
+			    * weighted_averages[j]
 			    * JxW[point];
-
-			  // double weighted_aver_i = AverageGradOperators::weighted_average_gradient<dim>(cell, f, sf, ncell, nf,
-					// 								nsf, fe_iv,
-					// 								normals[point],
-					// 								i, point,
-					// 								coef0_diff, coef1_diff,
-					// 								weight0_diff, weight1_diff);
-
-			  double weighted_aver_i = weighted_averages[i];
 
 			  copy_data_face.cell_matrix(i, j) +=
 			    theta_Sv
 			    * fe_iv.jump_in_shape_values(j, point)
-			    * weighted_aver_i
+			    * weighted_averages[i]
 			    * JxW[point];
 			}
 		    }
@@ -1519,7 +1529,8 @@ namespace VaporSaturation
     const UpdateFlags face_flags = update_values | update_gradients |
       update_quadrature_points |
       update_normal_vectors | update_JxW_values;
-    ScratchData scratch_data(mapping, fe, quadrature, cell_flags, face_quadrature, face_flags);
+
+    ScratchData<dim> scratch_data(mapping, fe, fe_RT, quadrature, face_quadrature);
     CopyData         copy_data;
 
     const auto filtered_iterator_range =
@@ -1547,7 +1558,7 @@ namespace VaporSaturation
   }
 
   template <int dim>
-  void VaporSaturationProblem<dim>::solve_vapor_saturation(PETScWrappers::MPI::Vector pl_solution_)
+  void VaporSaturationProblem<dim>::solve_vapor_saturation()
   {
     Sv_solution.reinit(locally_owned_dofs, mpi_communicator);
 
@@ -1560,7 +1571,7 @@ namespace VaporSaturation
       }
     else
       {
-	SolverControl solver_control(pl_solution_.size(), 1.e-7 * right_hand_side_vapor_saturation.l2_norm());
+	SolverControl solver_control(locally_owned_dofs.size(), 1.e-7 * right_hand_side_vapor_saturation.l2_norm());
 
 	PETScWrappers::SolverGMRES gmres(solver_control, mpi_communicator);
 	// PETScWrappers::PreconditionBoomerAMG preconditioner(system_matrix_vapor_saturation);
